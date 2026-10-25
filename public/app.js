@@ -1209,21 +1209,6 @@ watchTimers(ts => {
    In a home-screen web app with a see-through status bar, iOS sometimes lays the page out
    shorter than the screen, so bars pinned to the bottom float above the real edge. Measure the
    shortfall and let the CSS move those bars down by it. In a browser tab it stays 0. */
-function fixIosGap() {
-  let gap = 0;
-  const standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
-  if (standalone && /iP(hone|od|ad)/.test(navigator.platform + navigator.userAgent)) {
-    const portrait = matchMedia("(orientation: portrait)").matches;
-    const screenH = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-    const diff = Math.round(screenH - window.innerHeight);
-    if (diff > 0 && diff < 80) gap = diff;
-  }
-  document.documentElement.style.setProperty("--ios-gap", gap + "px");
-}
-fixIosGap();
-window.addEventListener("resize", fixIosGap);
-window.addEventListener("orientationchange", () => setTimeout(fixIosGap, 300));
-
 /* ===== Boot ===== */
 async function openIncoming() {
   // A short share link: #s=... (needs this app's sync to be set up)

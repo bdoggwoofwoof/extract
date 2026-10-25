@@ -23,6 +23,12 @@
 
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
+/* iOS 26 home-screen apps (WebKit bug 301108): while the page is shorter than the screen, iOS sizes the
+   app's viewport short by the status-bar height, so bars pinned to the bottom float above the real edge.
+   Making the page at least screen-tall restores the full viewport. Elsewhere this works out to 100%. */
+@media (display-mode: standalone){
+  html{min-height:calc(100% + env(safe-area-inset-top,0px));min-height:min(100lvh, calc(100% + env(safe-area-inset-top,0px)))}
+}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--display);font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent}
 img{max-width:100%}
 [hidden]{display:none!important}
@@ -48,15 +54,7 @@ a{color:var(--herb)}
 .tabbar button.add{background:var(--herb);color:var(--herb-ink);border-color:var(--herb)}
 @media (max-width:700px){
   :root{--tabbar-h:64px}
-  /* iOS 26 home-screen apps can leave a strip below the page that nothing paints except the page
-     background (html). Give that background the tab bar's color so the strip reads as part of the bar;
-     the page itself keeps its own color on body, which always fills the screen. */
-  html{background:var(--card);min-height:100%}
-  html:has(body.cooking){background:var(--paper)}
-  body{min-height:100vh;min-height:100lvh}
-  /* --ios-gap: the height iOS sometimes leaves under fixed bars in home-screen apps (set in app.js).
-     The shadow paints the bar's color below its edge, so no gap can show either way. */
-  .tabbar{position:fixed;left:0;right:0;bottom:calc(-1 * var(--ios-gap, 0px));z-index:6;box-shadow:0 120px 0 0 var(--card);margin:0;max-width:none;background:var(--card);border-top:1px solid var(--line);justify-content:space-around;gap:0;
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:6;margin:0;max-width:none;background:var(--card);border-top:1px solid var(--line);justify-content:space-around;gap:0;
     padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
   .tabbar button{flex-direction:column;gap:2px;border:0;border-radius:10px;padding:4px 6px;min-width:58px;font-size:12px;color:var(--muted);background:none}
   .tabbar svg{width:24px;height:24px}
@@ -218,7 +216,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .cm-uses ul{list-style:none;margin:8px 0 0;padding:0;font-family:var(--body);font-size:18px;display:flex;flex-direction:column;gap:6px}
 .cm-uses .q,.cm-all .q{font-family:var(--mono);font-size:15px;color:var(--herb);font-variant-numeric:tabular-nums}
 .cm-all{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
-.cm-nav{position:fixed;left:0;right:0;bottom:calc(-1 * var(--ios-gap, 0px));z-index:6;box-shadow:0 120px 0 0 var(--paper);display:flex;gap:10px;background:var(--paper);border-top:1px solid var(--line);
+.cm-nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;background:var(--paper);border-top:1px solid var(--line);
   padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .cm-nav .btn{flex:1}
 @media (prefers-reduced-motion:reduce){.cm-bar span{transition:none}}
