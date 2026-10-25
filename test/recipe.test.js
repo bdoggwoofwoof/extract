@@ -61,6 +61,8 @@ test("durations", () => {
   assert.equal(isoDuration("PT90M"), "1 hr 30 min");
   assert.equal(isoDuration("P0DT0H20M"), "20 min");
   assert.equal(isoDuration("PT0S"), "");
+  assert.equal(isoDuration("P0Y0M0DT0H20M0.000S"), "20 min");
+  assert.equal(isoDuration("P0Y0M0DT1H5M0.000S"), "1 hr 5 min");
 });
 
 test("page text drops scripts and keeps structure", () => {
@@ -92,4 +94,11 @@ test("tidies decimal quantities into kitchen fractions", async () => {
   assert.equal(tidyQuantity("1.15 lb beef"), "1.15 lb beef");
   assert.equal(tidyQuantity("2 cups flour"), "2 cups flour");
   assert.equal(imageOf(["https://a.com/x-225x225.jpg", "https://a.com/x.jpg", "https://a.com/x-1200x800.jpg"]), "https://a.com/x-1200x800.jpg");
+});
+
+test("full-size photos from thumbnail addresses", async () => {
+  const { safeImage } = await import("../lib/recipe.js");
+  assert.equal(safeImage("https://pinchofyum.com/tachyon/Cookies.jpg?fit=225%2C225"), "https://pinchofyum.com/tachyon/Cookies.jpg");
+  assert.equal(safeImage("https://img.co/a.jpg?resize=440,400&x=1"), "https://img.co/a.jpg?x=1");
+  assert.equal(safeImage("https://img.co/a.jpg?w=1600"), "https://img.co/a.jpg?w=1600");
 });
