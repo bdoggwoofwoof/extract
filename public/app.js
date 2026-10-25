@@ -851,6 +851,14 @@ function vSettings() {
           <p class="hint">This app is locked so strangers can't use it. Enter the access code you set in Vercel.</p></div>` : ""}
       </section>
       ${syncSection()}
+      <section class="panel stack"><h2>App icon</h2>
+        <div class="icon-pick" role="group" aria-label="Home screen icon">
+          ${[["", "Match phone"], ["dark", "Dark"], ["light", "Light"]].map(([v, l]) => `<button class="icon-opt" data-act="icon-style" data-v="${v}" aria-pressed="${(settings.get("iconStyle") || "") === v}">
+            ${v ? `<img src="/icons/${v === "light" ? "apple-touch-icon-light" : "apple-touch-icon"}.png" alt="" width="56" height="56">` : `<span class="icon-split"><img src="/icons/apple-touch-icon.png" alt="" width="56" height="56"><img src="/icons/apple-touch-icon-light.png" alt="" width="56" height="56"></span>`}
+            <span>${l}</span></button>`).join("")}
+        </div>
+        <p class="hint">Home-screen web apps keep the icon they were added with. To change it, remove Extract from your home screen and add it again.${sync.info().signedIn ? "" : " That also clears the recipes saved on this phone, so save a backup first (below), or turn on sync."}</p>
+      </section>
       <section class="panel stack"><h2>Meal plan</h2>
         <div class="row"><span>Weeks start on</span><div class="seg" role="group" aria-label="Week starts on">
           <button data-act="week-start" data-v="sun" aria-pressed="${settings.get("weekStart") !== "mon"}">Sunday</button><button data-act="week-start" data-v="mon" aria-pressed="${settings.get("weekStart") === "mon"}">Monday</button></div></div>
@@ -1049,6 +1057,14 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "icon-style": {
+      settings.set("iconStyle", el.dataset.v);
+      const light = el.dataset.v === "light" || (!el.dataset.v && matchMedia("(prefers-color-scheme: light)").matches);
+      $("#touch-icon").href = light ? "/icons/apple-touch-icon-light.png" : "/icons/apple-touch-icon.png";
+      $("#manifest-link").href = light ? "/manifest-light.webmanifest" : "/manifest.webmanifest";
+      toast("Icon set. It applies the next time you add Extract to your home screen.");
+      return render();
+    }
     case "sync-now": return sync.syncNow();
     case "sync-out": await sync.signOut(); toast("Signed out. Your recipes stay on this device."); return render();
     case "sync-restart": state.syncEmailSent = ""; return render();
