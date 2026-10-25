@@ -55,6 +55,9 @@ const state = {
 };
 const recipes = () => [...state.items.values()].filter(i => i.kind === "recipe");
 const books = () => [...state.items.values()].filter(i => i.kind === "book").sort((a, b) => a.name.localeCompare(b.name));
+const sameSource = (a, b) => { const n = u => { try { const x = new URL(u); return (x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/+$/, "")).toLowerCase(); } catch { return ""; } }; const na = n(a); return !!na && na === n(b); };
+const findBySource = (src, exceptId) => src ? recipes().find(r => r.id !== exceptId && sameSource(r.source, src)) : null;
+const cookedText = r => { const c = r.cooked || []; if (!c.length) return ""; const last = new Date(c[c.length - 1]).toLocaleDateString(undefined, { month: "short", day: "numeric" }); return `Cooked ${c.length === 1 ? "once" : c.length + " times"} · last ${last}`; };
 const grocery = () => state.items.get("grocery") || { id: "grocery", kind: "grocery", items: [] };
 const saveGrocery = items => save({ ...grocery(), items });
 const listCount = () => grocery().items.filter(i => !i.done).length;
@@ -130,7 +133,7 @@ async function unpack(s) {
   if (kind === "z") raw = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
   return JSON.parse(new TextDecoder().decode(raw));
 }
-const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; return o; };
+const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; return o; };
 async function shareLinkFor(item) {
   const payload = item.kind === "book"
     ? { v: 1, kind: "book", book: { name: item.name, description: item.description || "" }, recipes: (item.recipeIds || []).map(i => state.items.get(i)).filter(Boolean).map(strip) }
@@ -288,7 +291,7 @@ const tagsOf = r => (r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`
 const timeOf = r => r.totalTime || [r.prepTime, r.cookTime].filter(Boolean).join(" + ");
 function rcard(r, act = "open-recipe") {
   const meta = [timeOf(r), r.servings ? `Serves ${r.servings}` : r.yield, domain(r.source)].filter(Boolean).map(esc);
-  return `<button class="rcard${r.image ? " has-img" : ""}" data-act="${act}" data-id="${esc(r.id)}">${imgTag(r.image, "rimg")}<h2>${esc(r.title)}</h2>
+  return `<button class="rcard${r.image ? " has-img" : ""}" data-act="${act}" data-id="${esc(r.id)}">${imgTag(r.image, "rimg")}<h2>${r.fav ? `<span class="heart" aria-label="Favorite">♥</span> ` : ""}${esc(r.title)}</h2>
     ${meta.length ? `<div class="meta">${meta.map(x => `<span>${x}</span>`).join("")}</div>` : ""}
     <div class="tags">${tagsOf(r)}</div></button>`;
 }
@@ -301,16 +304,20 @@ function vLibrary() {
   const counts = {}; all.forEach(r => (r.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
   const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
   const q = state.q.toLowerCase();
-  const list = all.filter(r => (!state.tag || (r.tags || []).includes(state.tag)) &&
+  const favs = all.filter(r => r.fav).length;
+  const list = all.filter(r => (!state.fav || r.fav) && (!state.tag || (r.tags || []).includes(state.tag)) &&
     (!q || (r.title + " " + (r.ingredients || []).join(" ") + " " + (r.tags || []).join(" ")).toLowerCase().includes(q)))
-    .sort(state.sort === "az" ? (a, b) => a.title.localeCompare(b.title) : (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    .sort(state.sort === "az" ? (a, b) => a.title.localeCompare(b.title)
+      : state.sort === "cooked" ? (a, b) => ((b.cooked || []).length - (a.cooked || []).length) || ((b.cooked || []).slice(-1)[0] || 0) - ((a.cooked || []).slice(-1)[0] || 0)
+      : (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return `<div class="row"><h1>Your recipes</h1><span class="spacer"></span><span class="meta">${all.length} saved</span></div>
     <div class="tools">
       <input type="search" id="q" placeholder="Search titles, ingredients, categories" value="${esc(state.q)}" aria-label="Search recipes">
-      <select id="sort" aria-label="Sort"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option></select>
+      <select id="sort" aria-label="Sort"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option><option value="cooked"${state.sort === "cooked" ? " selected" : ""}>Most cooked</option></select>
     </div>
-    ${tags.length ? `<div class="chips" role="group" aria-label="Filter by category">
-      <button class="chip" data-act="tag" data-tag="" aria-pressed="${!state.tag}">All</button>
+    ${tags.length || favs ? `<div class="chips" role="group" aria-label="Filter recipes">
+      <button class="chip" data-act="tag" data-tag="" aria-pressed="${!state.tag && !state.fav}">All</button>
+      ${favs ? `<button class="chip" data-act="fav-filter" aria-pressed="${!!state.fav}">♥ Favorites<span class="n">${favs}</span></button>` : ""}
       ${tags.map(t => `<button class="chip" data-act="tag" data-tag="${esc(t)}" aria-pressed="${state.tag === t}">${esc(t)}<span class="n">${counts[t]}</span></button>`).join("")}</div>` : ""}
     ${list.length ? `<div class="cards">${list.map(r => rcard(r)).join("")}</div>` : `<div class="empty"><strong>Nothing matches</strong><span>Try another word or clear the category filter.</span></div>`}`;
 }
@@ -374,13 +381,15 @@ function vRecipe() {
       <div class="actions">
         ${(r.steps || []).some(x => !x.startsWith("## ")) ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">Start cooking</button>` : ""}
         <button class="btn" data-act="edit" data-id="${esc(r.id)}">Edit</button>
+        <button class="btn fav-btn" data-act="fav" data-id="${esc(r.id)}" aria-pressed="${!!r.fav}" aria-label="${r.fav ? "Remove from favorites" : "Add to favorites"}">${r.fav ? "♥" : "♡"}</button>
         <button class="btn" data-act="list-pick" data-id="${esc(r.id)}">Add to list</button>
         <button class="btn" data-act="book-menu" aria-expanded="${state.bookMenu}">Books${inBooks.length ? ` · ${inBooks.length}` : ""}</button>
         <button class="btn" data-act="share" data-id="${esc(r.id)}">Share</button>
         <button class="btn danger ghost" data-act="delete-ask" data-id="${esc(r.id)}">Delete</button>
       </div>
       ${menu}${confirm}
-      ${inBooks.length ? `<div class="row meta">In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}</div>` : ""}
+      <div class="row meta">${inBooks.length ? `<span>In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}</span>` : ""}
+        ${cookedText(r) ? `<span>${esc(cookedText(r))}</span>` : ""}<button class="linkish" data-act="cooked" data-id="${esc(r.id)}">I made this today</button></div>
     </div>
     <div style="margin-top:18px">${cookBody(r)}</div>`;
 }
@@ -439,6 +448,7 @@ function vEdit() {
   return `<button class="back" data-act="cancel-edit">← Cancel</button>
     <h1>${d.id ? "Edit recipe" : "Check it, then save"}</h1>
     ${d.id ? "" : `<p class="lede">Fix anything that came through wrong. Nothing is saved until you tap Save recipe.</p>`}
+    ${!d.id && findBySource(d.source) ? `<div class="notice row" style="margin-top:12px"><span>You already saved this recipe as “${esc(findBySource(d.source).title)}”.</span><span class="spacer"></span><button type="button" class="btn sm" data-act="open-recipe" data-id="${esc(findBySource(d.source).id)}">Open it</button></div>` : ""}
     ${!d.id && state.draftArchived ? `<p class="notice" style="margin-top:12px">This site blocks readers, so this came from the Internet Archive's copy saved ${esc(archiveDate(state.draftArchived))}. If the recipe changed since then, check the original.</p>` : ""}
     <form class="stack" data-form="recipe" style="margin-top:20px">
       <div class="field"><label for="f-title">Title</label><input type="text" id="f-title" value="${esc(d.title)}" required></div>
@@ -764,7 +774,10 @@ document.addEventListener("click", async e => {
     case "back-book": { const b = books().find(b => (b.recipeIds || []).includes(state.view.id)); return go(b ? { name: "book", id: b.id } : { name: "library" }); }
     case "open-recipe": return go({ name: "recipe", id, from: el.dataset.from });
     case "open-book": return go({ name: "book", id });
-    case "tag": state.tag = el.dataset.tag; state.focusQ = false; return render();
+    case "tag": state.tag = el.dataset.tag; if (!el.dataset.tag) state.fav = false; state.focusQ = false; return render();
+    case "fav-filter": state.fav = !state.fav; state.focusQ = false; return render();
+    case "fav": { const r = state.items.get(id); save({ ...r, fav: !r.fav }); toast(r.fav ? "Removed from favorites" : "Added to favorites"); return render(); }
+    case "cooked": { const r = state.items.get(id); save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); toast("Marked as cooked today"); return render(); }
     case "example": { const r = { ...JSON.parse(JSON.stringify(EXAMPLE)), kind: "recipe", id: newId("r") }; save(r); return go({ name: "recipe", id: r.id }); }
     case "ing": { const i = +el.dataset.i; state.cook.ings.has(i) ? state.cook.ings.delete(i) : state.cook.ings.add(i); el.closest("li").classList.toggle("done", el.checked); return; }
     case "step": { const i = +el.dataset.i; state.cook.steps.has(i) ? state.cook.steps.delete(i) : state.cook.steps.add(i); el.classList.toggle("done"); el.setAttribute("aria-pressed", state.cook.steps.has(i)); return; }
@@ -826,7 +839,7 @@ document.addEventListener("click", async e => {
     case "cook-next": return cookGo(1);
     case "cook-prev": return cookGo(-1);
     case "cook-ings": state.view.showAll = !state.view.showAll; return render();
-    case "cook-finish": exitCook(); return toast("Enjoy your meal!");
+    case "cook-finish": { const r = state.items.get(state.view.id); if (r) save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); exitCook(); return toast("Enjoy your meal! Marked as cooked."); }
     case "timer-start": { e.stopPropagation(); const secs = +el.dataset.secs; startTimer(el.dataset.label || "Timer", secs); toast(`Timer set for ${fmtClock(secs)}`); return; }
     case "timer-stop": return stopTimer(el.dataset.id);
     case "timer-add": return addTime(el.dataset.id, 60);
