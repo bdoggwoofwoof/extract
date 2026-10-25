@@ -184,3 +184,41 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .photo-edit{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .thumb{width:96px;height:72px;border-radius:8px;object-fit:cover;background:var(--herb-soft);flex:none}
 .thumb.empty{border:1.5px dashed var(--line);background:none}
+
+/* times in steps */
+.time{font:inherit;color:var(--herb);background:var(--herb-soft);border:0;border-radius:6px;padding:0 5px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.time::before{content:"⏱ ";font-size:.85em}
+
+/* cook mode */
+.cooking .bar,.cooking .tabbar{display:none}
+.cooking{--tabbar-h:0px}
+.cooking main{padding-top:max(12px,env(safe-area-inset-top,0px))}
+.cook-mode{display:flex;flex-direction:column;gap:14px;max-width:720px;margin:0 auto;padding-bottom:110px}
+.cm-top{display:flex;align-items:center;gap:8px}
+.cm-count{flex:1;text-align:center;font-family:var(--mono);font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cm-bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.cm-bar span{display:block;height:100%;background:var(--herb);transition:width .25s}
+.cm-title{margin:6px 0 0;font-weight:700;color:var(--muted)}
+.cm-step{margin:0;font-family:var(--body);font-size:clamp(22px,5.4vw,30px);line-height:1.45}
+.cm-uses{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.cm-uses ul{list-style:none;margin:8px 0 0;padding:0;font-family:var(--body);font-size:18px;display:flex;flex-direction:column;gap:6px}
+.cm-uses .q,.cm-all .q{font-family:var(--mono);font-size:15px;color:var(--herb);font-variant-numeric:tabular-nums}
+.cm-all{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.cm-nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;background:var(--paper);border-top:1px solid var(--line);
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.cm-nav .btn{flex:1}
+@media (prefers-reduced-motion:reduce){.cm-bar span{transition:none}}
+
+/* timer tray */
+#timers{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + var(--tabbar-h) + env(safe-area-inset-bottom,0px));z-index:15;max-width:calc(100% - 24px)}
+.cooking #timers{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.timer-tray{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.timer{display:flex;align-items:center;gap:4px;background:var(--ink);color:var(--paper);border-radius:12px;padding:6px 6px 6px 14px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.timer .btn{color:var(--paper);min-height:32px}
+.timer .tt{display:flex;flex-direction:column;min-width:0;margin-right:6px}
+.tclock{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums}
+.tlabel{font-size:12px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.timer.done{background:var(--saffron);color:#1b1407;animation:pulse 1s ease-in-out infinite}
+.timer.done .btn{color:#1b1407}
+@keyframes pulse{50%{transform:scale(1.04)}}
+@media (prefers-reduced-motion:reduce){.timer.done{animation:none}}

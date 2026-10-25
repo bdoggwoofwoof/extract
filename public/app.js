@@ -1,5 +1,6 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
 import { TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
+import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -271,9 +272,10 @@ function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; 
 function render() {
   const v = state.view.name;
   ["library", "books", "add", "settings"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
+  const cur = { cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
-  const fn = { library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
+  document.body.classList.toggle("cooking", v === "cook");
+  const fn = { cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v === "add") wireAdd();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -309,6 +311,16 @@ function vLibrary() {
     ${list.length ? `<div class="cards">${list.map(r => rcard(r)).join("")}</div>` : `<div class="empty"><strong>Nothing matches</strong><span>Try another word or clear the category filter.</span></div>`}`;
 }
 
+// Step text with each time ("25 minutes") turned into a timer button.
+function stepHtml(text, label) {
+  let out = "", at = 0;
+  for (const t of findTimes(text)) {
+    out += esc(text.slice(at, t.start));
+    out += `<button class="time" data-act="timer-start" data-secs="${t.secs}" data-label="${esc(label)}" aria-label="Start a ${esc(t.text)} timer">${esc(t.text)}</button>`;
+    at = t.end;
+  }
+  return out + esc(text.slice(at));
+}
 function resetCook(id) { if (state.cook.id !== id) state.cook = { id, scale: 1, ings: new Set(), steps: new Set() }; }
 function cookBody(r) {
   const c = state.cook, base = r.servings || null, k = c.scale;
@@ -322,7 +334,7 @@ function cookBody(r) {
   const steps = (r.steps || []).map((s, si) => {
     if (s.startsWith("## ")) return `<li class="sec">${esc(s.slice(3))}</li>`;
     n++; const done = c.steps.has(si);
-    return `<li class="step ${done ? "done" : ""}" data-act="step" data-i="${si}" role="button" tabindex="0" aria-pressed="${done}"><span class="num">${String(n).padStart(2, "0")}</span><span>${esc(s)}</span></li>`;
+    return `<li class="step ${done ? "done" : ""}" data-act="step" data-i="${si}" role="button" tabindex="0" aria-pressed="${done}"><span class="num">${String(n).padStart(2, "0")}</span><span>${stepHtml(s, `${r.title}, step ${n}`)}</span></li>`;
   }).join("");
   const facts = [];
   if (base) facts.push(`<div class="fact"><div class="k">Servings</div><div class="v"><span class="scaler"><button data-act="scale" data-d="-1" aria-label="Fewer servings">−</button><span>${fmtNum(base * k)}</span><button data-act="scale" data-d="1" aria-label="More servings">+</button></span></div></div>`);
@@ -356,6 +368,7 @@ function vRecipe() {
   return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">← ${fromBook ? "Back to book" : "All recipes"}</button>
     <div class="stack">
       <div class="actions">
+        ${(r.steps || []).some(x => !x.startsWith("## ")) ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">Start cooking</button>` : ""}
         <button class="btn" data-act="edit" data-id="${esc(r.id)}">Edit</button>
         <button class="btn" data-act="book-menu" aria-expanded="${state.bookMenu}">Books${inBooks.length ? ` · ${inBooks.length}` : ""}</button>
         <button class="btn" data-act="share" data-id="${esc(r.id)}">Share</button>
@@ -365,6 +378,54 @@ function vRecipe() {
       ${inBooks.length ? `<div class="row meta">In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}</div>` : ""}
     </div>
     <div style="margin-top:18px">${cookBody(r)}</div>`;
+}
+
+function cookSteps(r) {
+  const out = []; let section = "";
+  (r.steps || []).forEach(s => { if (s.startsWith("## ")) section = s.slice(3); else out.push({ text: s, section }); });
+  return out;
+}
+function vCook() {
+  const r = state.items.get(state.view.id);
+  if (!r) return vRecipe();
+  resetCook(r.id);
+  const steps = cookSteps(r), i = Math.min(state.view.step || 0, steps.length - 1), st = steps[i], k = state.cook.scale;
+  const last = i === steps.length - 1;
+  const uses = ingredientsForStep(st.text, r.ingredients || []);
+  const ingLine = line => { const { q, rest } = splitQty(line, k); return `${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}`; };
+  const all = state.view.showAll ? `<div class="cm-all"><div class="row"><h3>All ingredients${k !== 1 ? ` · ×${fmtNum(k)}` : ""}</h3><span class="spacer"></span><button class="btn sm" data-act="cook-ings">Close</button></div>
+      <ul class="ings">${(r.ingredients || []).map(l => l.startsWith("## ") ? `<li class="sec">${esc(l.slice(3))}</li>` : `<li><span>${ingLine(l)}</span></li>`).join("")}</ul></div>` : "";
+  return `<div class="cook-mode" id="cook-mode">
+    <div class="cm-top">
+      <button class="btn sm ghost" data-act="cook-exit" aria-label="Leave cook mode">✕ Done</button>
+      <span class="cm-count">Step ${i + 1} of ${steps.length}</span>
+      <button class="btn sm" data-act="cook-ings" aria-expanded="${!!state.view.showAll}">Ingredients</button>
+    </div>
+    <div class="cm-bar" aria-hidden="true"><span style="width:${((i + 1) / steps.length) * 100}%"></span></div>
+    <p class="cm-title">${esc(r.title)}</p>
+    ${st.section ? `<p class="sec" style="padding-top:0">${esc(st.section)}</p>` : ""}
+    <p class="cm-step">${stepHtml(st.text, `${r.title}, step ${i + 1}`)}</p>
+    ${uses.length ? `<div class="cm-uses"><h3>In this step</h3><ul>${uses.map(u => `<li>${ingLine(u.line)}</li>`).join("")}</ul></div>` : ""}
+    ${all}
+    <div class="cm-nav">
+      <button class="btn big" data-act="cook-prev" ${i === 0 ? "disabled" : ""}>Back</button>
+      <button class="btn primary big" data-act="${last ? "cook-finish" : "cook-next"}">${last ? "Finish" : "Next step"}</button>
+    </div>
+  </div>`;
+}
+function cookGo(d) {
+  const r = state.items.get(state.view.id); if (!r) return;
+  const n = cookSteps(r).length, next = Math.max(0, Math.min(n - 1, (state.view.step || 0) + d));
+  if (next !== state.view.step) { state.view.step = next; render(); window.scrollTo(0, 0); }
+}
+async function enterCook(id) {
+  go({ name: "cook", id, step: 0 });
+  if ("wakeLock" in navigator && !state.wake) { state.cookWake = true; await toggleWake(); }
+}
+function exitCook() {
+  const id = state.view.id;
+  if (state.cookWake && state.wake) { state.cookWake = false; toggleWake(); }
+  go({ name: "recipe", id });
 }
 
 function vEdit() {
@@ -701,11 +762,31 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "cook-start": return enterCook(id);
+    case "cook-exit": return exitCook();
+    case "cook-next": return cookGo(1);
+    case "cook-prev": return cookGo(-1);
+    case "cook-ings": state.view.showAll = !state.view.showAll; return render();
+    case "cook-finish": exitCook(); return toast("Enjoy your meal!");
+    case "timer-start": { e.stopPropagation(); const secs = +el.dataset.secs; startTimer(el.dataset.label || "Timer", secs); toast(`Timer set for ${fmtClock(secs)}`); return; }
+    case "timer-stop": return stopTimer(el.dataset.id);
+    case "timer-add": return addTime(el.dataset.id, 60);
     case "photo-remove": keepDraftFields(); state.draft.image = ""; return render();
     case "tour": return openTour($("#modal-root"), TOUR, "Tour");
   }
 });
+let touchX = null, touchY = null;
+document.addEventListener("touchstart", e => { if (state.view.name === "cook") { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; } }, { passive: true });
+document.addEventListener("touchend", e => {
+  if (state.view.name !== "cook" || touchX == null) return;
+  const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY; touchX = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) cookGo(dx < 0 ? 1 : -1);
+}, { passive: true });
 document.addEventListener("keydown", e => {
+  if (state.view.name === "cook" && !e.target.closest("input,textarea")) {
+    if (e.key === "ArrowRight") return cookGo(1);
+    if (e.key === "ArrowLeft") return cookGo(-1);
+  }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".steps li.step")) { e.preventDefault(); e.target.click(); }
   if (e.key === "Escape" && $("#modal-root").innerHTML) closeModal();
 });
@@ -721,6 +802,16 @@ document.addEventListener("submit", e => {
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
   if (f === "quick-book") { const n = $("#qb-name").value.trim(); if (!n) return; createBook(n, e.target.dataset.recipe); toast(`Added to ${n}`); return render(); }
   if (f === "edit-book") { const b = state.items.get(e.target.dataset.id); save({ ...b, name: $("#eb-name").value.trim() || b.name, description: $("#eb-desc").value.trim() }); state.view.editing = false; return render(); }
+});
+
+/* ===== Timer tray ===== */
+let traySig = "";
+watchTimers(ts => {
+  const box = $("#timers"); if (!box) return;
+  const sig = ts.map(t => t.id + t.done).join();
+  if (sig !== traySig) { traySig = sig; box.innerHTML = timersHtml(esc); return; }
+  const now = Date.now();
+  box.querySelectorAll(".timer").forEach((el, i) => { const t = ts[i]; if (t && !t.done) el.querySelector(".tclock").textContent = fmtClock((t.end - now) / 1000); });
 });
 
 /* ===== Boot ===== */
