@@ -1,5 +1,6 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
 import { TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
+import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
 
 /* ===== Helpers ===== */
@@ -46,12 +47,20 @@ function splitQty(line, k) {
   return { q, rest: line.slice(m[0].length).trim() };
 }
 
+// Amount shown for an ingredient line: scaled, then converted when the toggle is on.
+function showQty(line, k) {
+  const t = state.units;
+  if (t === "metric" || t === "us") { const c = convertLine(line, k, t); if (c) return c; }
+  return splitQty(line, k);
+}
+const showStep = text => (state.units === "metric" || state.units === "us") ? convertTemps(text, state.units) : text;
+
 /* ===== State ===== */
 const state = {
   items: new Map(), view: { name: "loading" }, q: "", tag: "", sort: "recent",
   cook: { id: null, scale: 1, ings: new Set(), steps: new Set() },
   confirm: null, bookMenu: false, addTab: "link", wake: null, wantWake: false,
-  draft: null, ai: false, locked: false, online: true, persisted: false, pendingUrl: ""
+  units: settings.get("units") || "", draft: null, ai: false, locked: false, online: true, persisted: false, pendingUrl: ""
 };
 const recipes = () => [...state.items.values()].filter(i => i.kind === "recipe");
 const books = () => [...state.items.values()].filter(i => i.kind === "book").sort((a, b) => a.name.localeCompare(b.name));
@@ -338,14 +347,14 @@ function cookBody(r) {
   let i = 0;
   const ings = (r.ingredients || []).map(line => {
     if (line.startsWith("## ")) return `<li class="sec">${esc(line.slice(3))}</li>`;
-    const idx = i++; const { q, rest } = splitQty(line, k); const done = c.ings.has(idx);
+    const idx = i++; const { q, rest } = showQty(line, k); const done = c.ings.has(idx);
     return `<li class="${done ? "done" : ""}"><label><input type="checkbox" data-act="ing" data-i="${idx}" ${done ? "checked" : ""}><span>${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}</span></label></li>`;
   }).join("");
   let n = 0;
   const steps = (r.steps || []).map((s, si) => {
     if (s.startsWith("## ")) return `<li class="sec">${esc(s.slice(3))}</li>`;
     n++; const done = c.steps.has(si);
-    return `<li class="step ${done ? "done" : ""}" data-act="step" data-i="${si}" role="button" tabindex="0" aria-pressed="${done}"><span class="num">${String(n).padStart(2, "0")}</span><span>${stepHtml(s, `${r.title}, step ${n}`)}</span></li>`;
+    return `<li class="step ${done ? "done" : ""}" data-act="step" data-i="${si}" role="button" tabindex="0" aria-pressed="${done}"><span class="num">${String(n).padStart(2, "0")}</span><span>${stepHtml(showStep(s), `${r.title}, step ${n}`)}</span></li>`;
   }).join("");
   const facts = [];
   if (base) facts.push(`<div class="fact"><div class="k">Servings</div><div class="v"><span class="scaler"><button data-act="scale" data-d="-1" aria-label="Fewer servings">−</button><span>${fmtNum(base * k)}</span><button data-act="scale" data-d="1" aria-label="More servings">+</button></span></div></div>`);
@@ -354,6 +363,9 @@ function cookBody(r) {
     facts.push(`<div class="fact"><div class="k">Scale</div><div class="v"><span class="scaler"><button data-act="mult" data-d="-1" aria-label="Smaller batch">−</button><span>×${fmtNum(k)}</span><button data-act="mult" data-d="1" aria-label="Bigger batch">+</button></span></div></div>`);
   }
   [["Prep", r.prepTime], ["Cook", r.cookTime], ["Total", r.totalTime]].forEach(([a, b]) => b && facts.push(`<div class="fact"><div class="k">${a}</div><div class="v">${esc(b)}</div></div>`));
+  const other = systemOf(r.ingredients || []) === "metric" ? "us" : "metric";
+  const conv = state.units === other;
+  facts.push(`<div class="fact"><div class="k">Units</div><div class="v"><button class="btn sm" data-act="units" data-v="${conv ? "" : other}" aria-pressed="${conv}">${conv ? "Show as written" : other === "metric" ? "Convert to metric" : "Convert to US"}</button></div></div>`);
   return `${imgTag(r.image, "hero", r.title)}<div class="rhead">
       ${(r.tags || []).length ? `<div class="row">${tagsOf(r)}</div>` : ""}
       <h1>${esc(r.title)}</h1>
@@ -406,7 +418,7 @@ function vCook() {
   const steps = cookSteps(r), i = Math.min(state.view.step || 0, steps.length - 1), st = steps[i], k = state.cook.scale;
   const last = i === steps.length - 1;
   const uses = ingredientsForStep(st.text, r.ingredients || []);
-  const ingLine = line => { const { q, rest } = splitQty(line, k); return `${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}`; };
+  const ingLine = line => { const { q, rest } = showQty(line, k); return `${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}`; };
   const all = state.view.showAll ? `<div class="cm-all"><div class="row"><h3>All ingredients${k !== 1 ? ` · ×${fmtNum(k)}` : ""}</h3><span class="spacer"></span><button class="btn sm" data-act="cook-ings">Close</button></div>
       <ul class="ings">${(r.ingredients || []).map(l => l.startsWith("## ") ? `<li class="sec">${esc(l.slice(3))}</li>` : `<li><span>${ingLine(l)}</span></li>`).join("")}</ul></div>` : "";
   return `<div class="cook-mode" id="cook-mode">
@@ -418,7 +430,7 @@ function vCook() {
     <div class="cm-bar" aria-hidden="true"><span style="width:${((i + 1) / steps.length) * 100}%"></span></div>
     <p class="cm-title">${esc(r.title)}</p>
     ${st.section ? `<p class="sec" style="padding-top:0">${esc(st.section)}</p>` : ""}
-    <p class="cm-step">${stepHtml(st.text, `${r.title}, step ${i + 1}`)}</p>
+    <p class="cm-step">${stepHtml(showStep(st.text), `${r.title}, step ${i + 1}`)}</p>
     ${uses.length ? `<div class="cm-uses"><h3>In this step</h3><ul>${uses.map(u => `<li>${ingLine(u.line)}</li>`).join("")}</ul></div>` : ""}
     ${all}
     <div class="cm-nav">
@@ -552,7 +564,7 @@ function listText() {
 }
 function openListPicker(r) {
   const k = state.cook.id === r.id ? state.cook.scale : 1;
-  const lines = (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = splitQty(l, k); return (q ? q + " " : "") + rest; });
+  const lines = (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, k); return (q ? q + " " : "") + rest; });
   modal(`<h2>Add to grocery list</h2>
     <p class="hint">Untick anything you already have.${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
     <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
@@ -819,6 +831,7 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "units": state.units = el.dataset.v; settings.set("units", state.units); return render();
     case "list-pick": return openListPicker(state.items.get(id));
     case "pick-all": document.querySelectorAll(".lp").forEach(c => c.checked = el.dataset.v === "1"); return;
     case "list-add-picked": {
