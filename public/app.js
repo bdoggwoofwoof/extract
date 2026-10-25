@@ -1,5 +1,5 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
-import { TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
+import { FULL_TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
 import * as sync from "/sync.js";
 import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
@@ -852,7 +852,7 @@ function vSettings() {
       </section>
       ${syncSection()}
       <section class="panel stack"><h2>Appearance</h2>
-        <div class="seg" role="group" aria-label="Theme">${[["", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) =>
+        <div class="seg" role="group" aria-label="Theme" id="theme-seg">${[["", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) =>
           `<button data-act="theme" data-v="${v}" aria-pressed="${(settings.get("theme") || "") === v}">${l}</button>`).join("")}</div>
       </section>
       <section class="panel stack"><h2>App icon</h2>
@@ -1131,7 +1131,7 @@ document.addEventListener("click", async e => {
     case "timer-stop": return stopTimer(el.dataset.id);
     case "timer-add": return addTime(el.dataset.id, 60);
     case "photo-remove": keepDraftFields(); state.draft.image = ""; return render();
-    case "tour": return openTour($("#modal-root"), TOUR, "Tour");
+    case "tour": return openTour($("#tour-root"), FULL_TOUR, "Tour", tourHooks);
   }
 });
 let touchX = null, touchY = null;
@@ -1172,6 +1172,28 @@ document.addEventListener("submit", e => {
   if (f === "quick-book") { const n = $("#qb-name").value.trim(); if (!n) return; createBook(n, e.target.dataset.recipe); toast(`Added to ${n}`); return render(); }
   if (f === "edit-book") { const b = state.items.get(e.target.dataset.id); save({ ...b, name: $("#eb-name").value.trim() || b.name, description: $("#eb-desc").value.trim() }); state.view.editing = false; return render(); }
 });
+
+/* ===== Tour hooks: open the screen each step points at ===== */
+const TOUR_DEMO = "__tour-demo";
+const tourHooks = {
+  async show(step) {
+    closeModal();
+    const needsRecipe = step.view === "recipe" || step.view === "library";
+    if (needsRecipe && !recipes().length) state.items.set(TOUR_DEMO, { ...JSON.parse(JSON.stringify(EXAMPLE)), id: TOUR_DEMO, kind: "recipe", title: "Red Lentil Soup (example)", updatedAt: Date.now() });
+    if (step.view === "add") { state.addTab = step.tab || "link"; if (state.view.name !== "add" || $(".tabs [aria-selected=true]")?.dataset.t !== state.addTab) go({ name: "add" }); }
+    else if (step.view === "recipe") {
+      const r = recipes().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+      if (state.view.name !== "recipe" || state.view.id !== r.id) go({ name: "recipe", id: r.id });
+    }
+    else if (state.view.name !== step.view) go({ name: step.view });
+  },
+  done() {
+    const hadDemo = state.items.delete(TOUR_DEMO);
+    if (hadDemo && state.view.id === TOUR_DEMO) go({ name: "library" });
+    else if (hadDemo) render();
+    window.scrollTo(0, 0);
+  }
+};
 
 /* ===== Timer tray ===== */
 let traySig = "";
@@ -1238,7 +1260,7 @@ async function openIncoming() {
   if (/^#s=/.test(location.hash)) await Promise.race([syncReady, new Promise(r => setTimeout(r, 6000))]);
   try { if (navigator.storage && navigator.storage.persist) state.persisted = await navigator.storage.persisted() || await navigator.storage.persist(); } catch {}
   await openIncoming();
-  if (state.view.name !== "shared") maybeShowTour($("#modal-root"));
+  if (state.view.name !== "shared") maybeShowTour($("#tour-root"), tourHooks);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();
 window.addEventListener("hashchange", () => { if (/^#[rs]=/.test(location.hash)) openIncoming(); });

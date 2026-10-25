@@ -1,116 +1,223 @@
-/* The tour: shown in full on first open, then only the new entries after each update.
-   Add one entry here whenever a feature ships. `added` is the release date shown in What's new. */
-
-const I = {
-  link: '<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
-  book: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
-  share: '<path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
-  archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>',
-  scale: '<path d="M5 12h14"/><path d="M12 5v14"/><circle cx="12" cy="12" r="9"/>',
-  photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-8 8"/>',
-  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>',
-  cart: '<path d="M3 4h2l2.5 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/>',
-  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
-  units: '<path d="M4 7h16"/><path d="M4 17h16"/><path d="M8 4l-4 3 4 3"/><path d="M16 14l4 3-4 3"/>',
-  plan: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
-  voice: '<path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
-  stack: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
-  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-  sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
-  icon: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 4v16"/>',
-  theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>',
-  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
-};
+/* The tour: shows people where things are. Each step opens the right screen and spotlights the
+   real button or box, with a short callout next to it. First open runs the whole tour; after an
+   update, only the new steps run (as "What's new").
+   Add an entry whenever a feature ships:
+     view    the screen to open: library, recipe, add, plan, list, books, settings
+     target  CSS selector of the thing to spotlight (no target = centered card)
+     tab     for the Add screen: which tab to open first
+     tip     the callout text, written for pointing ("Paste a link here")
+     body    the same news for the What's new list in Settings, which has no pointing */
 
 export const TOUR = [
-  { id: "welcome", added: "2026-10-25", icon: "link", title: "Paste a link, get just the recipe",
+  { id: "welcome", added: "2026-10-25", view: "add", tab: "link", target: "#x-url",
+    title: "Paste a link, get just the recipe",
+    tip: "Paste a link to any recipe page here, or tap Paste link. You get just the ingredients and steps to check over before saving.",
     body: "Tap Add, paste a link to any recipe page, and Extract pulls out the ingredients and steps. No ads, no life story. You check it over before saving." },
-  { id: "android-share", added: "2026-10-25", icon: "home", title: "Save from anywhere",
-    body: "On Android, tap Share on a recipe page and pick Extract. On iPhone, copy the link, open Extract, and tap Paste link." },
-  { id: "organize", added: "2026-10-25", icon: "book", title: "Categories and books",
-    body: "Tag recipes with categories like Dinner or Baking, then filter by them. Group recipes into books for a holiday, a person, or a week of meals." },
-  { id: "cook-basics", added: "2026-10-25", icon: "scale", title: "Scale while you cook",
-    body: "Tap + or − to change servings and every amount updates. Tick off ingredients as you go, and keep the screen on." },
-  { id: "share", added: "2026-10-25", icon: "share", title: "Share recipes and books",
-    body: "Share makes a link that holds the recipe itself, so anyone can open it and save their own copy. No account needed." },
-  { id: "archive-reader", added: "2026-10-25", icon: "archive", title: "Blocked sites now work",
+  { id: "archive-reader", added: "2026-10-25", view: "add", tab: "link", target: "[data-act=fetch-link]",
+    title: "Blocked sites work too",
+    tip: "Some big sites, like Allrecipes, turn readers away. Get recipe then reads the copy saved by the Internet Archive instead.",
     body: "Some big sites, like Allrecipes and Serious Eats, turn readers away. Extract now reads the public copy saved by the Internet Archive instead, so those links work too." },
-  { id: "photos", added: "2026-10-25", icon: "photo", title: "Recipe photos",
-    body: "Recipes now bring their photo along, so your library looks like a cookbook. Add or change a photo in Edit, like a snapshot of your own version." },
-  { id: "cook-mode", added: "2026-10-25", icon: "timer", title: "Cook mode and timers",
-    body: "Tap Start cooking for one big step at a time, with that step's ingredients right under it. Swipe or tap Next. Times in a step, like 25 minutes, are buttons: tap one to start a timer that rings when it's done." },
-  { id: "grocery", added: "2026-10-25", icon: "cart", title: "Grocery list",
-    body: "On any recipe, tap Add to list and untick what you already have. Amounts match the servings you picked. Add your own items, check things off in the store, and share the list." },
-  { id: "favorites", added: "2026-10-25", icon: "heart", title: "Favorites and what you've cooked",
-    body: "Tap ♡ to favorite a recipe, then filter your library to just those. Finishing cook mode, or tapping I made this today, keeps count, so you can sort by Most cooked. Saving a link you already have now tells you." },
-  { id: "units", added: "2026-10-25", icon: "units", title: "US and metric",
-    body: "Tap Convert to metric (or Convert to US) on a recipe to switch cups, ounces and pounds to millilitres and grams, and oven temperatures between °F and °C. Your choice sticks for every recipe until you switch back." },
-  { id: "meal-plan", added: "2026-10-25", icon: "plan", title: "Weekly meal plan",
-    body: "The Plan tab shows your week. Tap + Add on a day to pick a recipe for breakfast, lunch or dinner, or jot a note like Leftovers. Then tap Add this week to grocery list to shop for all of it at once." },
-  { id: "read-aloud", added: "2026-10-25", icon: "voice", title: "Hands-free cooking",
-    body: "In cook mode, tap Read steps aloud and each step is read to you as you move on. On Android (Chrome), Voice control lets you say next, back, or repeat without touching the screen." },
-  { id: "bulk-import", added: "2026-10-25", icon: "stack", title: "Import many recipes at once",
+  { id: "bulk-import", added: "2026-10-25", view: "add", tab: "link", target: "[data-act=add-tab][data-t=many]",
+    title: "Import many at once",
+    tip: "Moving from another app? Many links takes a whole batch pasted together and saves each recipe.",
     body: "Moving from another app? On Add, choose Many links and paste a whole batch. Extract reads and saves each one, and skips any you already have." },
-  { id: "nutrition-print", added: "2026-10-25", icon: "chart", title: "Nutrition and printing",
+  { id: "android-share", added: "2026-10-25", view: "add", tab: "link", target: "#nav-add",
+    title: "Save from anywhere",
+    tip: "Android: on any recipe page, tap Share and pick Extract. iPhone: copy the link, then come here and tap Paste link.",
+    body: "On Android, tap Share on a recipe page and pick Extract. On iPhone, copy the link, open Extract, and tap Paste link." },
+  { id: "organize", added: "2026-10-25", view: "library", target: ".chips",
+    title: "Find recipes by category",
+    tip: "Every category you give a recipe shows up here. Tap one to filter, or search above.",
+    body: "Tag recipes with categories like Dinner or Baking, then filter by them. Group recipes into books for a holiday, a person, or a week of meals." },
+  { id: "photos", added: "2026-10-25", view: "library", target: ".rcard",
+    title: "Your recipe cards",
+    tip: "Each saved recipe gets a card, with the site's photo when it has one. Tap a card to open the recipe.",
+    body: "Recipes now bring their photo along, so your library looks like a cookbook. Add or change a photo in Edit, like a snapshot of your own version." },
+  { id: "cook-mode", added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
+    title: "Cook mode and timers",
+    tip: "Start cooking shows one big step at a time with its ingredients. Times in a step, like 25 minutes, are buttons that start a timer.",
+    body: "Tap Start cooking for one big step at a time, with that step's ingredients right under it. Swipe or tap Next. Times in a step, like 25 minutes, are buttons: tap one to start a timer that rings when it's done." },
+  { id: "read-aloud", added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
+    title: "Hands-free cooking",
+    tip: "Inside cook mode, Read steps aloud reads each step to you. On Android, Voice control lets you say next, back, or repeat.",
+    body: "In cook mode, tap Read steps aloud and each step is read to you as you move on. On Android (Chrome), Voice control lets you say next, back, or repeat without touching the screen." },
+  { id: "cook-basics", added: "2026-10-25", view: "recipe", target: ".scaler",
+    title: "Scale while you cook",
+    tip: "Tap + or − to change servings and every amount updates. Tick ingredients off below as you go.",
+    body: "Tap + or − to change servings and every amount updates. Tick off ingredients as you go, and keep the screen on." },
+  { id: "units", added: "2026-10-25", view: "recipe", target: "[data-act=units]",
+    title: "US and metric",
+    tip: "Switch cups and pounds to millilitres and grams, and °F to °C. It sticks for every recipe until you switch back.",
+    body: "Tap Convert to metric (or Convert to US) on a recipe to switch cups, ounces and pounds to millilitres and grams, and oven temperatures between °F and °C. Your choice sticks for every recipe until you switch back." },
+  { id: "favorites", added: "2026-10-25", view: "recipe", target: ".fav-btn",
+    title: "Favorites",
+    tip: "Tap the heart to favorite a recipe, then filter your library to just those. Finishing cook mode counts how often you've made it.",
+    body: "Tap ♡ to favorite a recipe, then filter your library to just those. Finishing cook mode, or tapping I made this today, keeps count, so you can sort by Most cooked. Saving a link you already have now tells you." },
+  { id: "grocery", added: "2026-10-25", view: "recipe", target: "[data-act=list-pick]",
+    title: "Grocery list",
+    tip: "Add to list puts this recipe's ingredients on your list, scaled to your servings. Untick what you already have.",
+    body: "On any recipe, tap Add to list and untick what you already have. Amounts match the servings you picked. Add your own items, check things off in the store, and share the list." },
+  { id: "share", added: "2026-10-25", view: "recipe", target: "[data-act=share]",
+    title: "Share recipes and books",
+    tip: "Share makes a link anyone can open to save their own copy. No account needed.",
+    body: "Share makes a link that holds the recipe itself, so anyone can open it and save their own copy. No account needed." },
+  { id: "nutrition-print", added: "2026-10-25", view: "recipe", target: "[data-act=more]",
+    title: "More: plan, print, edit",
+    tip: "More has the rest: add to your meal plan, add to a book, edit, print a clean copy, or delete. Nutrition facts sit under the steps when the site lists them.",
     body: "When a recipe's site lists nutrition facts, they're saved with the recipe under Nutrition per serving. More → Print recipe gives a clean, ad-free page for the fridge." },
-  { id: "sync", added: "2026-10-25", icon: "sync", title: "Sync between devices",
+  { id: "meal-plan", added: "2026-10-25", view: "plan", target: ".day",
+    title: "Weekly meal plan",
+    tip: "Tap + Add on a day to plan a recipe or jot a note like Leftovers. Then add the whole week to your grocery list at once.",
+    body: "The Plan tab shows your week. Tap + Add on a day to pick a recipe for breakfast, lunch or dinner, or jot a note like Leftovers. Then tap Add this week to grocery list to shop for all of it at once." },
+  { id: "grocery-tab", news: false, added: "2026-10-25", view: "plan", target: "#nav-list",
+    title: "Your list, ready in the store",
+    tip: "The List tab holds everything you've added, grouped by recipe. The number shows what's left to get.",
+    body: "The List tab keeps your grocery list, grouped by recipe, with your own items too. Check things off as you shop." },
+  { id: "books", news: false, added: "2026-10-25", view: "plan", target: "#nav-books",
+    title: "Recipe books",
+    tip: "Books group recipes for a holiday, a person, or a week of dinners. A recipe can be in as many books as you like.",
+    body: "Group recipes into books for a holiday, a person, or a week of meals, and share a whole book at once." },
+  { id: "sync", added: "2026-10-25", view: "settings", target: "#sync-panel",
+    title: "Sync between devices",
+    tip: "Once sync is set up, sign in here with your email to keep everything the same on your phone and computer.",
     body: "In Settings, sign in with your email and a 6-digit code to keep recipes, books, your meal plan and grocery list in step on your phone and computer. While you're signed in, share links are short." },
-  { id: "icon-style", added: "2026-10-25", icon: "icon", title: "A light or dark icon",
+  { id: "theme", added: "2026-10-25", view: "settings", target: "#theme-seg",
+    title: "Light or dark",
+    tip: "Extract follows your phone's light or dark mode. Pick Light or Dark here to keep it one way.",
+    body: "Extract follows your phone's light or dark mode. To keep it one way, go to Settings → Appearance and pick Light or Dark." },
+  { id: "icon-style", added: "2026-10-25", view: "settings", target: ".icon-pick",
+    title: "Light or dark icon",
+    tip: "Pick the home-screen icon here. It's used when you add Extract to your home screen.",
     body: "Extract has a new bottle icon in dark and light. Pick one in Settings → App icon. It's used when you add Extract to your home screen; to switch an icon that's already there, remove Extract and add it again." },
-  { id: "theme", added: "2026-10-25", icon: "theme", title: "Light or dark, your choice",
-    body: "Extract follows your phone's light or dark mode. To keep it one way, go to Settings → Appearance and pick Light or Dark." }
+  { id: "tour-v2", firstRun: false, added: "2026-10-25", view: "settings", target: "[data-act=tour]",
+    title: "The tour now shows you around",
+    tip: "The tour now opens each screen and points at the real buttons. Take it any time from here.",
+    body: "The tour now opens each screen and points at the real buttons, instead of just describing them. Take it from Settings any time." },
+  { id: "settings-gear", news: false, added: "2026-10-25", view: "settings", target: "#nav-settings",
+    title: "That's the tour",
+    tip: "Settings is always up here: backups, sync, appearance, and Take the tour if you want this again.",
+    body: "Settings has backups, sync, appearance, and the tour." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";
 const seen = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); } catch { return new Set(); } };
 const markSeen = ids => { try { const s = seen(); ids.forEach(i => s.add(i)); localStorage.setItem(SEEN_KEY, JSON.stringify([...s])); } catch {} };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const icon = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${I[k] || I.link}</svg>`;
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-let root = null, cards = [], at = 0, heading = "";
-function draw() {
-  const c = cards[at], last = at === cards.length - 1;
-  root.innerHTML = `<div class="scrim tour-scrim" data-tour="scrim"><div class="modal tour" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-    <div class="tour-eyebrow">${esc(heading)}${cards.length > 1 ? ` · ${at + 1} of ${cards.length}` : ""}</div>
-    <div class="tour-icon">${icon(c.icon)}</div>
-    <h2 id="tour-title">${esc(c.title)}</h2>
-    <p>${esc(c.body)}</p>
-    ${cards.length > 1 ? `<div class="tour-dots" aria-hidden="true">${cards.map((_, i) => `<span class="${i === at ? "on" : ""}"></span>`).join("")}</div>` : ""}
-    <div class="row tour-actions">
-      ${at > 0 ? `<button class="btn" data-tour="back">Back</button>` : `<button class="btn ghost" data-tour="done">Skip</button>`}
-      <span class="spacer"></span>
-      <button class="btn primary" data-tour="${last ? "done" : "next"}">${last ? "Start cooking" : "Next"}</button>
-    </div></div></div>`;
-  root.querySelector("[data-tour=" + (last ? "done" : "next") + "]").focus();
+let root = null, steps = [], at = 0, heading = "", hooks = null, busy = false;
+
+// hooks.show(step) opens the step's screen (app.js); hooks.done() tidies up afterwards.
+export function openTour(el, list, title, h) {
+  if (!list.length) return;
+  root = el; steps = list; at = 0; heading = title; hooks = h;
+  root.innerHTML = `<div class="coach" role="dialog" aria-modal="true" aria-labelledby="coach-title">
+      <div class="coach-hole" aria-hidden="true"></div>
+      <div class="coach-card" tabindex="-1"></div></div>`;
+  root.addEventListener("click", onClick);
+  document.addEventListener("keydown", onKey);
+  window.addEventListener("resize", place);
+  show();
 }
-function close() { markSeen(TOUR.map(t => t.id)); root.innerHTML = ""; root.removeEventListener("click", onClick); document.removeEventListener("keydown", onKey); }
+
+async function show() {
+  if (busy) return; busy = true;
+  const s = steps[at];
+  try { await hooks.show(s); } catch {}
+  await nextFrame();
+  const t = s.target && document.querySelector(s.target);
+  if (t && t.getBoundingClientRect().height) {
+    t.scrollIntoView({ block: "center", inline: "nearest" });
+    await nextFrame();
+  }
+  drawCard();
+  place();
+  busy = false;
+}
+
+function drawCard() {
+  const s = steps[at], last = at === steps.length - 1;
+  const card = root.querySelector(".coach-card");
+  card.innerHTML = `
+    <div class="tour-eyebrow">${esc(heading)}${steps.length > 1 ? ` · ${at + 1} of ${steps.length}` : ""}</div>
+    <h2 id="coach-title">${esc(s.title)}</h2>
+    <p>${esc(s.tip || s.body)}</p>
+    ${steps.length > 1 ? `<div class="coach-progress" aria-hidden="true"><span style="width:${((at + 1) / steps.length) * 100}%"></span></div>` : ""}
+    <div class="row tour-actions">
+      ${at > 0 ? `<button class="btn sm" data-tour="back">Back</button>` : `<button class="btn sm ghost" data-tour="done">Skip tour</button>`}
+      <span class="spacer"></span>
+      <button class="btn sm primary" data-tour="${last ? "done" : "next"}">${last ? "Done" : "Next"}</button>
+    </div>`;
+  card.querySelector(`[data-tour=${last ? "done" : "next"}]`).focus({ preventScroll: true });
+}
+
+// Put the spotlight over the target and the callout next to it (below if there's room, else above).
+function place() {
+  if (!root || !steps.length) return;
+  const s = steps[at];
+  const hole = root.querySelector(".coach-hole"), card = root.querySelector(".coach-card");
+  const t = s.target && document.querySelector(s.target);
+  const r = t && t.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight, pad = 8, gap = 14;
+  const cw = Math.min(340, vw - 32);
+  card.style.width = cw + "px";
+  if (!r || !r.width || !r.height) {
+    hole.classList.add("none");
+    card.classList.remove("above", "below");
+    card.style.left = (vw - cw) / 2 + "px";
+    card.style.top = Math.max(16, (vh - card.offsetHeight) / 2) + "px";
+    return;
+  }
+  hole.classList.remove("none");
+  const x = Math.max(4, r.left - pad), y = Math.max(4, r.top - pad);
+  const w = Math.min(vw - 8, r.right + pad) - x, h = Math.min(vh - 4, r.bottom + pad) - y;
+  Object.assign(hole.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
+  const ch = card.offsetHeight;
+  const below = y + h + gap + ch < vh - 12 || y < ch + gap + 12;
+  const top = below ? Math.min(y + h + gap, vh - ch - 12) : y - gap - ch;
+  const left = Math.min(Math.max(16, r.left + r.width / 2 - cw / 2), vw - cw - 16);
+  card.style.left = left + "px";
+  card.style.top = Math.max(12, top) + "px";
+  card.classList.toggle("below", below); card.classList.toggle("above", !below);
+  card.style.setProperty("--arrow-x", Math.min(Math.max(18, r.left + r.width / 2 - left), cw - 18) + "px");
+}
+
+function close() {
+  markSeen(TOUR.map(t => t.id));
+  root.innerHTML = "";
+  root.removeEventListener("click", onClick);
+  document.removeEventListener("keydown", onKey);
+  window.removeEventListener("resize", place);
+  steps = [];
+  try { hooks.done(); } catch {}
+}
+function go(d) { const n = at + d; if (n < 0 || n >= steps.length || busy) return; at = n; show(); }
 function onClick(e) {
-  const a = e.target.closest("[data-tour]"); if (!a) return;
+  const a = e.target.closest("[data-tour]");
+  if (!a) { e.stopPropagation(); return; } // taps outside the callout do nothing during the tour
+  e.stopPropagation();
   const k = a.dataset.tour;
-  if (k === "scrim" && e.target !== a) return;
-  if (k === "next") { at++; draw(); } else if (k === "back") { at--; draw(); } else close();
+  if (k === "next") go(1); else if (k === "back") go(-1); else close();
 }
 function onKey(e) {
+  if (!steps.length) return;
   if (e.key === "Escape") close();
-  if (e.key === "ArrowRight" && at < cards.length - 1) { at++; draw(); }
-  if (e.key === "ArrowLeft" && at > 0) { at--; draw(); }
+  if (e.key === "ArrowRight") go(1);
+  if (e.key === "ArrowLeft") go(-1);
 }
-export function openTour(el, list, title) {
-  root = el; cards = list; at = 0; heading = title;
-  root.addEventListener("click", onClick); document.addEventListener("keydown", onKey);
-  draw();
-}
-// First open: the whole tour. After an update: just the new entries.
-export function maybeShowTour(el) {
+
+// First open: the whole tour. After an update: just the new steps.
+export const FULL_TOUR = TOUR.filter(t => t.firstRun !== false);
+export function maybeShowTour(el, h) {
   const s = seen();
-  const fresh = TOUR.filter(t => !s.has(t.id));
-  if (!fresh.length) return;
-  if (!s.size) openTour(el, TOUR, "Welcome to Extract");
-  else openTour(el, fresh, "What's new");
+  if (!s.size) return openTour(el, FULL_TOUR, "Welcome to Extract", h);
+  const fresh = TOUR.filter(t => !s.has(t.id) && t.news !== false);
+  if (fresh.length) openTour(el, fresh, "What's new", h);
+  else markSeen(TOUR.map(t => t.id));
 }
 export function whatsNewHtml(show = 3) {
   const li = t => `<li><strong>${esc(t.title)}</strong><span class="meta">${esc(new Date(t.added + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</span><p class="hint">${esc(t.body)}</p></li>`;
-  const all = [...TOUR].reverse();
+  const all = [...TOUR].reverse().filter(t => t.news !== false);
   const rest = all.slice(show);
   return `<ul class="news">${all.slice(0, show).map(li).join("")}</ul>` +
     (rest.length ? `<details class="news-more"><summary>Show all ${all.length} updates</summary><ul class="news">${rest.map(li).join("")}</ul></details>` : "");

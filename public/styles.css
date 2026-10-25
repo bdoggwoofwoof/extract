@@ -317,3 +317,19 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .icon-split{display:flex;width:56px;height:56px;border-radius:22.37%;overflow:hidden;box-shadow:0 0 0 1px var(--line)}
 .icon-split img{width:28px;height:56px;object-fit:cover;border-radius:0;box-shadow:none}
 .icon-split img:first-child{object-position:left}.icon-split img:last-child{object-position:right}
+
+/* tour: spotlight the real control, callout beside it */
+.coach{position:fixed;inset:0;z-index:40}
+.coach-hole{position:fixed;border-radius:14px;box-shadow:0 0 0 200vmax rgba(6,10,8,.66);outline:2px solid var(--herb);outline-offset:2px;
+  pointer-events:none;transition:left .28s ease,top .28s ease,width .28s ease,height .28s ease}
+.coach-hole.none{left:50%!important;top:50%!important;width:0!important;height:0!important;outline:none}
+.coach-card{position:fixed;background:var(--card);color:var(--ink);border-radius:14px;padding:16px 16px 12px;box-shadow:0 12px 32px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;gap:8px;transition:top .28s ease,left .28s ease;outline:none}
+.coach-card h2{font-size:19px;line-height:1.2}
+.coach-card p{margin:0;font-family:var(--body);font-size:16px;line-height:1.45}
+.coach-card::before{content:"";position:absolute;left:calc(var(--arrow-x, 50%) - 9px);border:9px solid transparent}
+.coach-card.below::before{top:-17px;border-bottom-color:var(--card)}
+.coach-card.above::before{bottom:-17px;border-top-color:var(--card)}
+.coach-progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:2px}
+.coach-progress span{display:block;height:100%;background:var(--herb);transition:width .28s ease}
+@media (prefers-reduced-motion:reduce){.coach-hole,.coach-card,.coach-progress span{transition:none}}
