@@ -18,6 +18,7 @@ const BLOG_PAGE = `<!doctype html><html><head><title>Best Banana Bread Ever - My
       {"@type":"HowToStep","text":"Mix the bananas and butter."}]},
     {"@type":"HowToSection","name":"Bake","itemListElement":[
       {"@type":"HowToStep","text":"Bake 60 to 65 minutes."}]}],
+  "image":[{"@type":"ImageObject","url":"https://example.com/small.jpg","width":300},{"@type":"ImageObject","url":"https://example.com/big.jpg","width":1200}],
   "mainEntityOfPage":{"@id":"https://example.com/banana-bread/"}}
 ]}</script></head><body><p>Long story...</p></body></html>`;
 
@@ -33,6 +34,14 @@ test("reads recipe data from a typical blog page", () => {
   assert.deepEqual(r.steps, ["## Batter", "Heat the oven to 350°F.", "Mix the bananas and butter.", "## Bake", "Bake 60 to 65 minutes."]);
   assert.deepEqual(r.tags, ["Breakfast", "Baking", "American"]);
   assert.equal(r.source, "https://example.com/banana-bread/");
+  assert.equal(r.image, "https://example.com/big.jpg");
+});
+
+test("images: strings, http refused", async () => {
+  const { safeImage, imageOf } = await import("../lib/recipe.js");
+  assert.equal(imageOf(["https://a.com/x.jpg"]), "https://a.com/x.jpg");
+  assert.equal(safeImage("http://a.com/x.jpg"), "");
+  assert.equal(safeImage("javascript:alert(1)"), "");
 });
 
 test("handles plain string instructions and a single Recipe object", () => {
