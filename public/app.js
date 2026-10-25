@@ -126,7 +126,7 @@ async function unpack(s) {
   if (kind === "z") raw = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
   return JSON.parse(new TextDecoder().decode(raw));
 }
-const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; return o; };
+const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; return o; };
 async function shareLinkFor(item) {
   const payload = item.kind === "book"
     ? { v: 1, kind: "book", book: { name: item.name, description: item.description || "" }, recipes: (item.recipeIds || []).map(i => state.items.get(i)).filter(Boolean).map(strip) }
@@ -186,7 +186,8 @@ function tryStructured(text) {
     prepTime: isoDur(node.prepTime), cookTime: isoDur(node.cookTime), totalTime: isoDur(node.totalTime),
     ingredients: [].concat(node.recipeIngredient || []).map(clean).filter(Boolean),
     steps: flatSteps(node.recipeInstructions), notes: "",
-    tags: [].concat(node.recipeCategory || []).map(clean).filter(Boolean).slice(0, 4)
+    tags: [].concat(node.recipeCategory || []).map(clean).filter(Boolean).slice(0, 4),
+    image: [].concat(node.image || []).map(i => typeof i === "string" ? i : (i && i.url) || "").find(Boolean) || ""
   };
 }
 function normalize(r, url) {
@@ -195,9 +196,13 @@ function normalize(r, url) {
     title: String(r.title || "").trim() || "Untitled recipe", source: String(url || r.source || "").trim(),
     servings: Number(r.servings) > 0 ? Math.round(Number(r.servings)) : null, yield: String(r.yield || "").trim(),
     prepTime: String(r.prepTime || "").trim(), cookTime: String(r.cookTime || "").trim(), totalTime: String(r.totalTime || "").trim(),
-    ingredients: arr(r.ingredients), steps: arr(r.steps), notes: String(r.notes || "").trim(), tags: arr(r.tags).slice(0, 6)
+    ingredients: arr(r.ingredients), steps: arr(r.steps), notes: String(r.notes || "").trim(), tags: arr(r.tags).slice(0, 6),
+    image: safeImg(r.image)
   };
 }
+// Photos are either an https address from the recipe site or a photo you added (a data: image).
+function safeImg(u) { u = String(u || ""); if (/^data:image\/(jpeg|png|webp);base64,/.test(u)) return u; try { return new URL(u).protocol === "https:" ? u : ""; } catch { return ""; } }
+const imgTag = (src, cls, alt = "") => src ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
 function setStatus(html, err) { const s = $("#x-status"); if (!s) return; s.className = "status" + (err ? " err" : ""); s.innerHTML = html; }
 function setBusy(b) { document.querySelectorAll("[data-busy]").forEach(el => el.disabled = b); }
 function findUrl(text) { const m = String(text || "").match(/https?:\/\/[^\s<>"']+/i); return m ? m[0].replace(/[),.;!?]+$/, "") : ""; }
@@ -277,7 +282,7 @@ const tagsOf = r => (r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`
 const timeOf = r => r.totalTime || [r.prepTime, r.cookTime].filter(Boolean).join(" + ");
 function rcard(r, act = "open-recipe") {
   const meta = [timeOf(r), r.servings ? `Serves ${r.servings}` : r.yield, domain(r.source)].filter(Boolean).map(esc);
-  return `<button class="rcard" data-act="${act}" data-id="${esc(r.id)}"><h2>${esc(r.title)}</h2>
+  return `<button class="rcard${r.image ? " has-img" : ""}" data-act="${act}" data-id="${esc(r.id)}">${imgTag(r.image, "rimg")}<h2>${esc(r.title)}</h2>
     ${meta.length ? `<div class="meta">${meta.map(x => `<span>${x}</span>`).join("")}</div>` : ""}
     <div class="tags">${tagsOf(r)}</div></button>`;
 }
@@ -326,7 +331,7 @@ function cookBody(r) {
     facts.push(`<div class="fact"><div class="k">Scale</div><div class="v"><span class="scaler"><button data-act="mult" data-d="-1" aria-label="Smaller batch">−</button><span>×${fmtNum(k)}</span><button data-act="mult" data-d="1" aria-label="Bigger batch">+</button></span></div></div>`);
   }
   [["Prep", r.prepTime], ["Cook", r.cookTime], ["Total", r.totalTime]].forEach(([a, b]) => b && facts.push(`<div class="fact"><div class="k">${a}</div><div class="v">${esc(b)}</div></div>`));
-  return `<div class="rhead">
+  return `${imgTag(r.image, "hero", r.title)}<div class="rhead">
       ${(r.tags || []).length ? `<div class="row">${tagsOf(r)}</div>` : ""}
       <h1>${esc(r.title)}</h1>
       ${r.source ? `<a class="src" href="${esc(r.source)}" target="_blank" rel="noopener">${esc(domain(r.source) || r.source)} ↗</a>` : ""}
@@ -371,6 +376,10 @@ function vEdit() {
     ${!d.id && state.draftArchived ? `<p class="notice" style="margin-top:12px">This site blocks readers, so this came from the Internet Archive's copy saved ${esc(archiveDate(state.draftArchived))}. If the recipe changed since then, check the original.</p>` : ""}
     <form class="stack" data-form="recipe" style="margin-top:20px">
       <div class="field"><label for="f-title">Title</label><input type="text" id="f-title" value="${esc(d.title)}" required></div>
+      <div class="field"><label>Photo</label>
+        <div class="photo-edit">${d.image ? imgTag(d.image, "thumb", "Recipe photo") : `<div class="thumb empty" aria-hidden="true"></div>`}
+          <div class="row"><label class="btn sm" for="f-photo">${d.image ? "Change photo" : "Add photo"}</label>${d.image ? `<button type="button" class="btn sm ghost" data-act="photo-remove">Remove</button>` : ""}</div>
+          <input type="file" id="f-photo" accept="image/*" hidden></div></div>
       <div class="grid4">
         <div class="field"><label for="f-serv">Servings</label><input type="number" id="f-serv" min="1" inputmode="numeric" value="${d.servings || ""}"></div>
         <div class="field"><label for="f-yield">Or makes</label><input type="text" id="f-yield" placeholder="1 loaf" value="${esc(d.yield)}"></div>
@@ -540,6 +549,26 @@ function copyFrom(el) {
   navigator.clipboard.writeText(el.value).then(() => toast("Copied"), () => { el.focus(); el.select(); toast("Text selected. Use Copy from the menu."); });
 }
 
+/* ===== Your own photos ===== */
+// Keep what's typed in the editor when it redraws for a photo change.
+function keepDraftFields() {
+  const d = state.draft; if (!d || !$("#f-title")) return;
+  const v = id => $(id).value;
+  Object.assign(d, { title: v("#f-title"), servings: parseInt(v("#f-serv"), 10) || null, yield: v("#f-yield"), prepTime: v("#f-prep"), cookTime: v("#f-cook"), totalTime: v("#f-total"),
+    ingredients: v("#f-ings").split("\n"), steps: v("#f-steps").split(/\n\s*\n/), notes: v("#f-notes"), source: v("#f-src"), tags: v("#f-tags").split(",").map(s => s.trim()).filter(Boolean) });
+}
+async function addOwnPhoto(file) {
+  keepDraftFields();
+  try {
+    const url = URL.createObjectURL(file); const img = new Image(); img.src = url; await img.decode();
+    const sc = Math.min(1, 1200 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    state.draft.image = c.toDataURL("image/jpeg", 0.78);
+  } catch { toast("That file couldn't be opened as a photo."); }
+  render();
+}
+
 /* ===== Backup ===== */
 async function exportBackup() {
   const data = { app: "extract", version: 1, exportedAt: new Date().toISOString(), items: [...state.items.values()] };
@@ -591,7 +620,8 @@ function saveRecipeForm() {
     ingredients: $("#f-ings").value.split("\n").map(s => s.trim()).filter(Boolean),
     steps: (/\n\s*\n/.test(steps) ? steps.split(/\n\s*\n/) : steps.split("\n")).map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean),
     notes: $("#f-notes").value.trim(), source: val("#f-src"),
-    tags: [...new Set(val("#f-tags").split(",").map(s => s.trim()).filter(Boolean))]
+    tags: [...new Set(val("#f-tags").split(",").map(s => s.trim()).filter(Boolean))],
+    image: d.image || ""
   };
   save(r);
   const chosen = new Set([...document.querySelectorAll(".f-book:checked")].map(i => i.value));
@@ -671,6 +701,7 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "photo-remove": keepDraftFields(); state.draft.image = ""; return render();
     case "tour": return openTour($("#modal-root"), TOUR, "Tour");
   }
 });
@@ -682,6 +713,7 @@ document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e
 document.addEventListener("change", e => {
   if (e.target.id === "sort") { state.sort = e.target.value; render(); }
   if (e.target.id === "s-import" && e.target.files[0]) importBackup(e.target.files[0]);
+  if (e.target.id === "f-photo" && e.target.files[0]) addOwnPhoto(e.target.files[0]);
 });
 document.addEventListener("submit", e => {
   e.preventDefault(); const f = e.target.dataset.form;

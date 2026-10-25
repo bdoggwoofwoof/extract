@@ -1,12 +1,14 @@
 // Keeps the app working offline: the app itself is cached; recipe fetching needs a connection.
 const CACHE = "extract-v2";
+const IMG_CACHE = "extract-photos";
+async function trimImages(c) { const keys = await c.keys(); for (const k of keys.slice(0, Math.max(0, keys.length - 300))) await c.delete(k); }
 const SHELL = ["/", "/index.html", "/app.js", "/tour.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== IMG_CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
   const req = e.request;
@@ -20,6 +22,14 @@ self.addEventListener("fetch", e => {
     return;
   }
   const isFont = /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
+  if (req.destination === "image" && url.origin !== location.origin) {
+    // Recipe photos from other sites: keep a copy so they show offline.
+    e.respondWith(caches.open(IMG_CACHE).then(async c => {
+      const hit = await c.match(req); if (hit) return hit;
+      try { const res = await fetch(req); if (res && (res.ok || res.type === "opaque")) { c.put(req, res.clone()); trimImages(c); } return res; } catch { return hit || Response.error(); }
+    }));
+    return;
+  }
   if (url.origin !== location.origin && !isFont) return;
   // App files: serve from cache, refresh in the background.
   e.respondWith(caches.match(req).then(hit => {

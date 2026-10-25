@@ -7,6 +7,7 @@ const I = {
   share: '<path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/>',
   scale: '<path d="M5 12h14"/><path d="M12 5v14"/><circle cx="12" cy="12" r="9"/>',
+  photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-8 8"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
 };
 
@@ -22,7 +23,9 @@ export const TOUR = [
   { id: "share", added: "2026-10-25", icon: "share", title: "Share recipes and books",
     body: "Share makes a link that holds the recipe itself, so anyone can open it and save their own copy. No account needed." },
   { id: "archive-reader", added: "2026-10-25", icon: "archive", title: "Blocked sites now work",
-    body: "Some big sites, like Allrecipes and Serious Eats, turn readers away. Extract now reads the public copy saved by the Internet Archive instead, so those links work too." }
+    body: "Some big sites, like Allrecipes and Serious Eats, turn readers away. Extract now reads the public copy saved by the Internet Archive instead, so those links work too." },
+  { id: "photos", added: "2026-10-25", icon: "photo", title: "Recipe photos",
+    body: "Recipes now bring their photo along, so your library looks like a cookbook. Add or change a photo in Edit, like a snapshot of your own version." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";
