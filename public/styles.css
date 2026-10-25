@@ -48,6 +48,12 @@ a{color:var(--herb)}
 .tabbar button.add{background:var(--herb);color:var(--herb-ink);border-color:var(--herb)}
 @media (max-width:700px){
   :root{--tabbar-h:64px}
+  /* iOS 26 home-screen apps can leave a strip below the page that nothing paints except the page
+     background (html). Give that background the tab bar's color so the strip reads as part of the bar;
+     the page itself keeps its own color on body, which always fills the screen. */
+  html{background:var(--card);min-height:100%}
+  html:has(body.cooking){background:var(--paper)}
+  body{min-height:100vh;min-height:100lvh}
   /* --ios-gap: the height iOS sometimes leaves under fixed bars in home-screen apps (set in app.js).
      The shadow paints the bar's color below its edge, so no gap can show either way. */
   .tabbar{position:fixed;left:0;right:0;bottom:calc(-1 * var(--ios-gap, 0px));z-index:6;box-shadow:0 120px 0 0 var(--card);margin:0;max-width:none;background:var(--card);border-top:1px solid var(--line);justify-content:space-around;gap:0;
