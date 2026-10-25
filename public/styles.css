@@ -267,3 +267,34 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .seg button{background:var(--card);border:0;border-left:1px solid var(--line);padding:7px 11px;cursor:pointer;font-weight:600;color:var(--muted)}
 .seg button:first-child{border-left:0}
 .seg button[aria-pressed="true"]{background:var(--herb);color:var(--herb-ink)}
+
+/* nutrition */
+.nutrition{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;max-width:65ch}
+.nutrition summary{cursor:pointer;list-style:none}
+.nutrition summary::-webkit-details-marker{display:none}
+.nutrition summary h3::after{content:" ▾"}
+.nutrition[open] summary h3::after{content:" ▴"}
+.nutrition dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px 16px;margin:12px 0 8px}
+.nutrition dt{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.nutrition dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+/* cook voice */
+.cm-voice{gap:8px}
+/* bulk import */
+.import-log{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.import-log a{font-weight:600}
+
+/* print: just the recipe */
+@media print{
+  :root{--paper:#fff;--card:#fff;--ink:#000;--muted:#444;--line:#ccc;--herb:#000;--saffron:#000;--saffron-soft:#fff;--herb-soft:#fff;color-scheme:light}
+  .bar,.tabbar,#timers,.toast,#modal-root,.back,.actions,.popover,.confirm,.scaler button,[data-act=units],[data-act=wake],[data-act=clear-checks],.rhead .hint,.foot{display:none!important}
+  main{padding:0!important}
+  body{font-size:12pt}
+  .hero{max-height:2.4in;break-inside:avoid}
+  .cook{grid-template-columns:2fr 3fr;gap:24px}
+  .ings input{display:none}
+  .ings li,.steps li.step{break-inside:avoid}
+  .steps{font-size:12pt}
+  .nutrition{border:1px solid #ccc}
+  .nutrition:not([open]) dl{display:grid}
+  a{color:#000;text-decoration:none}
+}

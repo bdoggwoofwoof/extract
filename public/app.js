@@ -60,7 +60,7 @@ const state = {
   items: new Map(), view: { name: "loading" }, q: "", tag: "", sort: "recent",
   cook: { id: null, scale: 1, ings: new Set(), steps: new Set() },
   confirm: null, bookMenu: false, addTab: "link", wake: null, wantWake: false,
-  units: settings.get("units") || "", draft: null, ai: false, locked: false, online: true, persisted: false, pendingUrl: ""
+  units: settings.get("units") || "", readAloud: settings.get("readAloud") === "1", draft: null, ai: false, locked: false, online: true, persisted: false, pendingUrl: ""
 };
 const recipes = () => [...state.items.values()].filter(i => i.kind === "recipe");
 const books = () => [...state.items.values()].filter(i => i.kind === "book").sort((a, b) => a.name.localeCompare(b.name));
@@ -224,7 +224,8 @@ function normalize(r, url) {
     servings: Number(r.servings) > 0 ? Math.round(Number(r.servings)) : null, yield: String(r.yield || "").trim(),
     prepTime: String(r.prepTime || "").trim(), cookTime: String(r.cookTime || "").trim(), totalTime: String(r.totalTime || "").trim(),
     ingredients: arr(r.ingredients), steps: arr(r.steps), notes: String(r.notes || "").trim(), tags: arr(r.tags).slice(0, 6),
-    image: safeImg(r.image)
+    image: safeImg(r.image),
+    nutrition: r.nutrition && typeof r.nutrition === "object" ? Object.fromEntries(Object.entries(r.nutrition).filter(([k, v]) => typeof v === "string" && v.length < 40).slice(0, 10)) : null
   };
 }
 // Photos are either an https address from the recipe site or a photo you added (a data: image).
@@ -281,6 +282,27 @@ async function extractFromPhoto(file) {
 }
 
 const archiveDate = ts => { const m = String(ts).match(/^(\d{4})(\d{2})(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "recently"; };
+
+async function importMany(text, tag) {
+  const urls = [...new Set((String(text).match(/https?:\/\/[^\s<>"']+/gi) || []).map(u => u.replace(/[),.;!?]+$/, "")))].slice(0, 100);
+  const log = $("#import-log");
+  if (!urls.length) { log.innerHTML = `<li class="status err">No links found. Paste links that start with https://</li>`; return; }
+  setBusy(true); let ok = 0;
+  log.innerHTML = urls.map((u, i) => `<li id="imp-${i}"><span class="spin"></span> <span class="u">${esc(domain(u) || u)}</span></li>`).join("");
+  for (let i = 0; i < urls.length; i++) {
+    const li = $("#imp-" + i); if (!li) break;
+    const dup = findBySource(urls[i]);
+    if (dup) { li.innerHTML = `✓ Already saved: <a href="#" data-act="open-recipe" data-id="${esc(dup.id)}">${esc(dup.title)}</a>`; continue; }
+    try {
+      const j = await api("/api/fetch?url=" + encodeURIComponent(urls[i]));
+      const r = { ...normalize(j.recipe, j.recipe.source || urls[i]), kind: "recipe", id: newId("r") };
+      if (tag) r.tags = [...new Set([...(r.tags || []), tag])];
+      await save(r); ok++;
+      li.innerHTML = `✓ <a href="#" data-act="open-recipe" data-id="${esc(r.id)}">${esc(r.title)}</a>`;
+    } catch (e) { li.className = "status err"; li.innerHTML = `✕ ${esc(domain(urls[i]))}: ${esc(e.message)}`; }
+  }
+  setBusy(false); toast(`Imported ${ok} of ${urls.length} recipe${urls.length === 1 ? "" : "s"}`);
+}
 
 /* ===== Example ===== */
 const EXAMPLE = {
@@ -352,6 +374,15 @@ function stepHtml(text, label) {
   }
   return out + esc(text.slice(at));
 }
+const NUT_LABELS = [["calories", "Calories"], ["protein", "Protein"], ["carbs", "Carbs"], ["fat", "Fat"], ["saturatedFat", "Saturated fat"], ["fiber", "Fiber"], ["sugar", "Sugar"], ["sodium", "Sodium"]];
+function nutritionHtml(r) {
+  const n = r.nutrition; if (!n) return "";
+  const rows = NUT_LABELS.filter(([k]) => n[k]);
+  if (!rows.length) return "";
+  return `<details class="nutrition"><summary><h3>Nutrition per serving</h3></summary>
+    <dl>${rows.map(([k, l]) => `<div><dt>${l}</dt><dd>${esc(n[k])}</dd></div>`).join("")}</dl>
+    <p class="hint">${n.servingSize ? `Serving: ${esc(n.servingSize)}. ` : ""}As listed by the recipe's site, for the original servings.</p></details>`;
+}
 function resetCook(id) { if (state.cook.id !== id) state.cook = { id, scale: 1, ings: new Set(), steps: new Set() }; }
 function cookBody(r, actions = "") {
   const c = state.cook, base = r.servings || null, k = c.scale;
@@ -387,7 +418,8 @@ function cookBody(r, actions = "") {
     <div class="cook">
       <section><div class="row"><h3>Ingredients</h3><span class="spacer"></span>${c.ings.size ? `<button class="btn sm ghost" data-act="clear-checks">Uncheck all</button>` : ""}</div><ul class="ings">${ings || `<li class="hint">No ingredients listed.</li>`}</ul></section>
       <section><div class="row"><h3>Method</h3><span class="spacer"></span>${"wakeLock" in navigator ? `<button class="btn sm" data-act="wake" aria-pressed="${!!state.wake}">${state.wake ? "Screen stays on" : "Keep screen on"}</button>` : ""}</div><ol class="steps">${steps || `<li class="hint">No steps listed.</li>`}</ol>
-      ${r.notes ? `<h3 style="margin-top:24px">Notes</h3><div class="notes" style="margin-top:10px">${esc(r.notes)}</div>` : ""}</section>
+      ${r.notes ? `<h3 style="margin-top:24px">Notes</h3><div class="notes" style="margin-top:10px">${esc(r.notes)}</div>` : ""}
+      ${nutritionHtml(r)}</section>
     </div>`;
 }
 
@@ -406,6 +438,7 @@ function vRecipe() {
       <button class="mitem" data-act="edit" data-id="${esc(r.id)}">Edit recipe</button>
       <button class="mitem" data-act="book-menu" aria-expanded="${state.bookMenu}">Add to a book${inBooks.length ? ` (in ${inBooks.length})` : ""}</button>
       <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this today</button>
+      <button class="mitem" data-act="print">Print recipe</button>
       <button class="mitem danger" data-act="delete-ask" data-id="${esc(r.id)}">Delete recipe</button></div>` : "";
   const actions = `<div class="stack" style="gap:10px">
       <div class="actions">
@@ -449,23 +482,62 @@ function vCook() {
     <p class="cm-step">${stepHtml(showStep(st.text), `${r.title}, step ${i + 1}`)}</p>
     ${uses.length ? `<div class="cm-uses"><h3>In this step</h3><ul>${uses.map(u => `<li>${ingLine(u.line)}</li>`).join("")}</ul></div>` : ""}
     ${all}
+    ${"speechSynthesis" in window ? `<div class="row cm-voice">
+      <button class="btn sm" data-act="read-aloud" aria-pressed="${!!state.readAloud}">${state.readAloud ? "🔊 Reading steps aloud" : "🔈 Read steps aloud"}</button>
+      ${SpeechRec ? `<button class="btn sm" data-act="voice" aria-pressed="${!!state.voiceOn}">${state.voiceOn ? "🎙 Listening: say next, back, repeat" : "🎙 Voice control"}</button>` : ""}
+    </div>` : ""}
     <div class="cm-nav">
       <button class="btn big" data-act="cook-prev" ${i === 0 ? "disabled" : ""}>Back</button>
       <button class="btn primary big" data-act="${last ? "cook-finish" : "cook-next"}">${last ? "Finish" : "Next step"}</button>
     </div>
   </div>`;
 }
+/* Read steps aloud, and (where the browser supports it) move through them by voice. */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+function speakStep() {
+  if (!state.readAloud || state.view.name !== "cook") return;
+  const r = state.items.get(state.view.id); if (!r) return;
+  const st = cookSteps(r)[state.view.step || 0]; if (!st) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(`Step ${(state.view.step || 0) + 1}. ${showStep(st.text)}`);
+    u.rate = 0.95; speechSynthesis.speak(u);
+  } catch {}
+}
+function stopVoice() {
+  state.voiceOn = false;
+  if (rec) { try { rec.onend = null; rec.abort(); } catch {} rec = null; }
+}
+function startVoice() {
+  if (!SpeechRec) return;
+  try {
+    rec = new SpeechRec(); rec.lang = navigator.language || "en-US"; rec.continuous = true; rec.interimResults = false;
+    rec.onresult = ev => {
+      const said = ev.results[ev.results.length - 1][0].transcript.toLowerCase();
+      if (/\b(next|forward|continue)\b/.test(said)) cookGo(1);
+      else if (/\b(back|previous|go back)\b/.test(said)) cookGo(-1);
+      else if (/\b(repeat|again|read)\b/.test(said)) { const was = state.readAloud; state.readAloud = true; speakStep(); state.readAloud = was; }
+    };
+    rec.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") { stopVoice(); toast("Microphone access was turned down, so voice control is off."); render(); } };
+    rec.onend = () => { if (state.voiceOn && state.view.name === "cook") { try { rec.start(); } catch {} } };
+    rec.start(); state.voiceOn = true;
+  } catch { stopVoice(); toast("Voice control isn't available in this browser."); }
+}
+
 function cookGo(d) {
   const r = state.items.get(state.view.id); if (!r) return;
   const n = cookSteps(r).length, next = Math.max(0, Math.min(n - 1, (state.view.step || 0) + d));
-  if (next !== state.view.step) { state.view.step = next; render(); window.scrollTo(0, 0); }
+  if (next !== state.view.step) { state.view.step = next; render(); window.scrollTo(0, 0); speakStep(); }
 }
 async function enterCook(id) {
-  go({ name: "cook", id, step: 0 });
+  go({ name: "cook", id, step: 0 }); speakStep();
   if ("wakeLock" in navigator && !state.wake) { state.cookWake = true; await toggleWake(); }
 }
 function exitCook() {
   const id = state.view.id;
+  try { speechSynthesis.cancel(); } catch {}
+  stopVoice();
   if (state.cookWake && state.wake) { state.cookWake = false; toggleWake(); }
   go({ name: "recipe", id });
 }
@@ -519,6 +591,12 @@ function vAdd() {
       <span id="x-status" class="status"></span>
       <p class="hint">Copy a link from any recipe site, then tap Paste link. Most big recipe sites work instantly.${state.ai ? "" : " Sites without standard recipe data need Claude reading, which you can turn on in Settings."}</p>
     </div>`;
+  if (t === "many") body = `<div class="stack">
+      <p class="hint">Moving your recipes over? Paste a batch of links, one per line, or a whole list copied from notes or another app. Each recipe is saved as it's read; you can edit any of them later.</p>
+      <div class="field"><label for="x-many">Recipe links</label><textarea id="x-many" rows="7" placeholder="https://…&#10;https://…"></textarea></div>
+      <div class="field"><label for="x-many-tag">Category for all of them (optional)</label><input type="text" id="x-many-tag" placeholder="e.g. Imported"></div>
+      <div class="row"><button class="btn primary big" data-act="import-many" data-busy>Import recipes</button></div>
+      <ol class="import-log" id="import-log"></ol></div>`;
   if (t === "paste") body = `<div class="stack">
       <p class="hint">For sites that block the link reader: open the recipe page, select all, copy, and paste it here.${state.ai ? "" : " Reading pasted text needs Claude reading (see Settings)."}</p>
       <div class="field"><label for="x-text">Page text</label><textarea id="x-text" rows="9" placeholder="Paste the whole page here, life story and all"></textarea></div>
@@ -533,7 +611,7 @@ function vAdd() {
     : `<p class="hint">Reading photos needs Claude reading, which isn't turned on for this app yet. Settings shows how to add it.</p><div style="margin-top:12px"><button class="btn" data-act="nav" data-v="settings">Open Settings</button></div>`;
   if (t === "type") body = `<div class="stack"><p class="hint">Start from a blank recipe card.</p><div><button class="btn primary big" data-act="manual">Start typing</button></div></div>`;
   return `<h1>Add a recipe</h1>
-    <div class="tabs" role="tablist">${tab("link", "Link")}${tab("paste", "Paste text")}${tab("photo", "Photo")}${tab("type", "Type it in")}</div>
+    <div class="tabs" role="tablist">${tab("link", "Link")}${tab("many", "Many links")}${tab("paste", "Paste text")}${tab("photo", "Photo")}${tab("type", "Type it in")}</div>
     <div class="panel">${body}</div>`;
 }
 function wireAdd() {
@@ -836,7 +914,7 @@ function saveRecipeForm() {
     steps: (/\n\s*\n/.test(steps) ? steps.split(/\n\s*\n/) : steps.split("\n")).map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean),
     notes: $("#f-notes").value.trim(), source: val("#f-src"),
     tags: [...new Set(val("#f-tags").split(",").map(s => s.trim()).filter(Boolean))],
-    image: d.image || ""
+    image: d.image || "", nutrition: d.nutrition || null
   };
   save(r);
   const chosen = new Set([...document.querySelectorAll(".f-book:checked")].map(i => i.value));
@@ -910,6 +988,7 @@ document.addEventListener("click", async e => {
     case "close-modal": return closeModal();
     case "add-tab": state.addTab = el.dataset.t; return render();
     case "fetch-link": return fetchFromLink($("#x-url").value);
+    case "import-many": return importMany($("#x-many").value, $("#x-many-tag").value.trim());
     case "paste-link": { try { const t = await navigator.clipboard.readText(); const u = findUrl(t) || t.trim(); $("#x-url").value = u; if (u) fetchFromLink(u); else setStatus("Your clipboard is empty. Copy a recipe link first.", true); } catch { setStatus("Couldn't read the clipboard. Long-press the box above and choose Paste.", true); } return; }
     case "extract-text": { const t = $("#x-text").value; if (t.trim().length < 40) return setStatus("Paste the recipe page's text first.", true); return extractFromText(t, $("#x-src").value.trim()); }
     case "manual": return openDraft({ title: "", ingredients: [], steps: [], tags: [] });
@@ -920,6 +999,9 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "read-aloud": state.readAloud = !state.readAloud; settings.set("readAloud", state.readAloud ? "1" : ""); if (state.readAloud) speakStep(); else { try { speechSynthesis.cancel(); } catch {} } return render();
+    case "voice": if (state.voiceOn) stopVoice(); else startVoice(); return render();
+    case "print": state.moreMenu = false; render(); return setTimeout(() => window.print(), 50);
     case "week": state.view.week = +el.dataset.d === 0 ? 0 : (state.view.week || 0) + (+el.dataset.d); return render();
     case "plan-add": return openPlanPicker(el.dataset.day);
     case "plan-recipe": state.moreMenu = false; render(); return openPlanPicker(dayKey(new Date()), id);

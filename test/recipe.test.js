@@ -102,3 +102,11 @@ test("full-size photos from thumbnail addresses", async () => {
   assert.equal(safeImage("https://img.co/a.jpg?resize=440,400&x=1"), "https://img.co/a.jpg?x=1");
   assert.equal(safeImage("https://img.co/a.jpg?w=1600"), "https://img.co/a.jpg?w=1600");
 });
+
+test("nutrition facts when the site gives them", async () => {
+  const { extractJsonLd } = await import("../lib/recipe.js");
+  const r = extractJsonLd(`<script type="application/ld+json">{"@type":"Recipe","name":"Soup","recipeIngredient":["1 onion"],"nutrition":{"@type":"NutritionInformation","calories":"250 kcal","proteinContent":"12 g","fatContent":"","sodiumContent":"480 mg","servingSize":"1 bowl"}}</script>`);
+  assert.deepEqual(r.nutrition, { calories: "250 kcal", protein: "12 g", sodium: "480 mg", servingSize: "1 bowl" });
+  const n = extractJsonLd(`<script type="application/ld+json">{"@type":"Recipe","name":"Toast","recipeIngredient":["bread"]}</script>`);
+  assert.equal(n.nutrition, null);
+});
