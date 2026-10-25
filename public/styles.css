@@ -26,6 +26,9 @@ html{-webkit-text-size-adjust:100%}
 /* iOS 26 home-screen apps (WebKit bug 301108): while the page is shorter than the screen, iOS sizes the
    app's viewport short by the status-bar height, so bars pinned to the bottom float above the real edge.
    Making the page at least screen-tall restores the full viewport. Elsewhere this works out to 100%. */
+/* Room kept clear above the home-screen swipe bar. Home-screen apps get a little extra. */
+:root{--safe-b:env(safe-area-inset-bottom,0px)}
+@media (display-mode: standalone) and (pointer: coarse){ :root{--safe-b:calc(max(env(safe-area-inset-bottom,0px), 20px) + 8px)} }
 @media (display-mode: standalone){
   html{min-height:calc(100% + env(safe-area-inset-top,0px));min-height:min(100lvh, calc(100% + env(safe-area-inset-top,0px)))}
 }
@@ -55,7 +58,7 @@ a{color:var(--herb)}
 @media (max-width:700px){
   :root{--tabbar-h:64px}
   .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:6;margin:0;max-width:none;background:var(--card);border-top:1px solid var(--line);justify-content:space-around;gap:0;
-    padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+    padding-top:6px;padding-bottom:calc(6px + var(--safe-b))}
   .tabbar button{flex-direction:column;gap:2px;border:0;border-radius:10px;padding:4px 6px;min-width:58px;font-size:12px;color:var(--muted);background:none}
   .tabbar svg{width:24px;height:24px}
   .tabbar button[aria-current="page"]{background:none;color:var(--herb)}
@@ -64,7 +67,7 @@ a{color:var(--herb)}
   .tabbar button.add{color:var(--herb)}
 }
 
-main{padding-block:22px calc(64px + var(--tabbar-h) + env(safe-area-inset-bottom,0px))}
+main{padding-block:22px calc(64px + var(--tabbar-h) + var(--safe-b))}
 h1,h2,h3{text-wrap:balance;margin:0;letter-spacing:-.015em}
 h1{font-size:clamp(26px,4.5vw,38px);line-height:1.1;font-weight:700}
 h2{font-size:20px;font-weight:700}
@@ -163,10 +166,10 @@ textarea{font-family:var(--body);line-height:1.5;resize:vertical}
 code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
 
 /* modal + toast */
-.scrim{position:fixed;inset:0;background:rgba(10,15,12,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+.scrim{position:fixed;inset:0;background:rgba(10,15,12,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center;padding:16px;padding-bottom:max(16px,var(--safe-b))}
 @media (min-width:640px){.scrim{align-items:center}}
 .modal{background:var(--card);border-radius:14px;padding:20px;width:min(520px,100%);max-height:90%;overflow:auto;display:flex;flex-direction:column;gap:14px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + var(--tabbar-h) + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100% - 32px);font-size:14px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + var(--tabbar-h) + var(--safe-b));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100% - 32px);font-size:14px}
 .foot{color:var(--muted);font-size:13px;margin-top:40px;display:flex;gap:6px;align-items:center}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--herb);display:inline-block;flex:none}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--herb);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
@@ -217,13 +220,13 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .cm-uses .q,.cm-all .q{font-family:var(--mono);font-size:15px;color:var(--herb);font-variant-numeric:tabular-nums}
 .cm-all{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .cm-nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;background:var(--paper);border-top:1px solid var(--line);
-  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + var(--safe-b)) max(16px,env(safe-area-inset-left,0px))}
 .cm-nav .btn{flex:1}
 @media (prefers-reduced-motion:reduce){.cm-bar span{transition:none}}
 
 /* timer tray */
-#timers{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + var(--tabbar-h) + env(safe-area-inset-bottom,0px));z-index:15;max-width:calc(100% - 24px)}
-.cooking #timers{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+#timers{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + var(--tabbar-h) + var(--safe-b));z-index:15;max-width:calc(100% - 24px)}
+.cooking #timers{bottom:calc(84px + var(--safe-b))}
 .timer-tray{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .timer{display:flex;align-items:center;gap:4px;background:var(--ink);color:var(--paper);border-radius:12px;padding:6px 6px 6px 14px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .timer .btn{color:var(--paper);min-height:32px}
@@ -253,7 +256,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .mitem{background:none;border:0;text-align:left;padding:11px 16px;font-weight:600;cursor:pointer;color:var(--ink)}
 .mitem:hover{background:var(--herb-soft)}
 .mitem.danger{color:var(--danger)}
-.cooking .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.cooking .toast{bottom:calc(96px + var(--safe-b))}
 
 /* meal planner */
 .week-nav{display:flex;align-items:center;gap:8px;margin:14px 0 4px;flex-wrap:wrap}

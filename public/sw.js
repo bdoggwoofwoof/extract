@@ -1,5 +1,5 @@
 // Keeps the app working offline: the app itself is cached; recipe fetching needs a connection.
-const CACHE = "extract-v12";
+const CACHE = "extract-v13";
 const IMG_CACHE = "extract-photos";
 async function trimImages(c) { const keys = await c.keys(); for (const k of keys.slice(0, Math.max(0, keys.length - 300))) await c.delete(k); }
 const SHELL = ["/", "/index.html", "/app.js", "/tour.js", "/cook.js", "/units.js", "/sync.js", "/vendor/supabase.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png", "/icons/apple-touch-icon-light.png", "/manifest-light.webmanifest"];
