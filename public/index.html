@@ -5,8 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Extract</title>
 <meta name="description" content="Paste a recipe link, get just the recipe. Save, sort into books, and share.">
-<meta name="theme-color" content="#2E6A4C" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1E3A2A" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#2E6A4C" media="(prefers-color-scheme: light)" id="tc-light">
+<meta name="theme-color" content="#1E3A2A" media="(prefers-color-scheme: dark)" id="tc-dark">
+<script>
+  /* Theme picked in Settings (light, dark, or follow the phone). Set before the page draws so it never flashes. */
+  (function () {
+    var t = ""; try { t = localStorage.getItem("rk-theme") || ""; } catch (e) {}
+    if (t === "light" || t === "dark") {
+      document.documentElement.setAttribute("data-theme", t);
+      var c = t === "light" ? "#2E6A4C" : "#1E3A2A";
+      document.getElementById("tc-light").content = c; document.getElementById("tc-dark").content = c;
+    }
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

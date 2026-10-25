@@ -11,10 +11,15 @@
   --tabbar-h:0px;
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root{
+/* Dark theme: follows the phone unless a theme is picked in Settings (data-theme on <html>). */
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --paper:#131714; --card:#1B211D; --ink:#E6EBE5; --muted:#9BA69E; --line:#2D3530;
   --herb:#7EC19C; --herb-ink:#0E1912; --herb-soft:#20352A; --bar:#1E3A2A; --bar-ink:#E6EBE5;
   --saffron:#E5B24C; --saffron-soft:#3A2F1C; --danger:#F08A82; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#131714; --card:#1B211D; --ink:#E6EBE5; --muted:#9BA69E; --line:#2D3530;
+  --herb:#7EC19C; --herb-ink:#0E1912; --herb-soft:#20352A; --bar:#1E3A2A; --bar-ink:#E6EBE5;
+  --saffron:#E5B24C; --saffron-soft:#3A2F1C; --danger:#F08A82; color-scheme:dark}
 
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}

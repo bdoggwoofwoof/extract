@@ -18,6 +18,7 @@ const I = {
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
   icon: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 4v16"/>',
+  theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
 };
 
@@ -55,7 +56,9 @@ export const TOUR = [
   { id: "sync", added: "2026-10-25", icon: "sync", title: "Sync between devices",
     body: "In Settings, sign in with your email and a 6-digit code to keep recipes, books, your meal plan and grocery list in step on your phone and computer. While you're signed in, share links are short." },
   { id: "icon-style", added: "2026-10-25", icon: "icon", title: "A light or dark icon",
-    body: "Extract has a new bottle icon in dark and light. Pick one in Settings → App icon. It's used when you add Extract to your home screen; to switch an icon that's already there, remove Extract and add it again." }
+    body: "Extract has a new bottle icon in dark and light. Pick one in Settings → App icon. It's used when you add Extract to your home screen; to switch an icon that's already there, remove Extract and add it again." },
+  { id: "theme", added: "2026-10-25", icon: "theme", title: "Light or dark, your choice",
+    body: "Extract follows your phone's light or dark mode. To keep it one way, go to Settings → Appearance and pick Light or Dark." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";

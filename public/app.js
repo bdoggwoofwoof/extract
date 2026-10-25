@@ -851,6 +851,10 @@ function vSettings() {
           <p class="hint">This app is locked so strangers can't use it. Enter the access code you set in Vercel.</p></div>` : ""}
       </section>
       ${syncSection()}
+      <section class="panel stack"><h2>Appearance</h2>
+        <div class="seg" role="group" aria-label="Theme">${[["", "Match phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) =>
+          `<button data-act="theme" data-v="${v}" aria-pressed="${(settings.get("theme") || "") === v}">${l}</button>`).join("")}</div>
+      </section>
       <section class="panel stack"><h2>App icon</h2>
         <div class="icon-pick" role="group" aria-label="Home screen icon">
           ${[["", "Match phone"], ["dark", "Dark"], ["light", "Light"]].map(([v, l]) => `<button class="icon-opt" data-act="icon-style" data-v="${v}" aria-pressed="${(settings.get("iconStyle") || "") === v}">
@@ -1057,6 +1061,13 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "theme": {
+      const t = el.dataset.v; settings.set("theme", t);
+      if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+      $("#tc-light").content = t === "dark" ? "#1E3A2A" : "#2E6A4C";
+      $("#tc-dark").content = t === "light" ? "#2E6A4C" : "#1E3A2A";
+      return render();
+    }
     case "icon-style": {
       settings.set("iconStyle", el.dataset.v);
       const light = el.dataset.v === "light" || (!el.dataset.v && matchMedia("(prefers-color-scheme: light)").matches);
