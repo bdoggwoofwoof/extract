@@ -82,3 +82,14 @@ test("refuses private and malformed addresses", async () => {
     await assert.rejects(fetchPage(bad), e => ["blocked_host", "bad_url"].includes(e.code));
   }
 });
+
+test("tidies decimal quantities into kitchen fractions", async () => {
+  const { tidyQuantity, imageOf } = await import("../lib/recipe.js");
+  assert.equal(tidyQuantity("0.25 teaspoon salt"), "¼ teaspoon salt");
+  assert.equal(tidyQuantity("2.3333332538605 cups bananas"), "2⅓ cups bananas");
+  assert.equal(tidyQuantity("0.5 cup butter"), "½ cup butter");
+  assert.equal(tidyQuantity("1.0 egg"), "1 egg");
+  assert.equal(tidyQuantity("1.15 lb beef"), "1.15 lb beef");
+  assert.equal(tidyQuantity("2 cups flour"), "2 cups flour");
+  assert.equal(imageOf(["https://a.com/x-225x225.jpg", "https://a.com/x.jpg", "https://a.com/x-1200x800.jpg"]), "https://a.com/x-1200x800.jpg");
+});

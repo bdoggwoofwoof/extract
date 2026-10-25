@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!url) return send(res, 400, { error: "bad_url", message: "Add a recipe link first." });
 
   // 1. The page itself.
-  let page = null, firstError = null;
+  let page = null, firstError = null, archiveNote = "";
   try { page = await fetchPage(url); }
   catch (e) {
     if (!(e instanceof FetchError)) console.error(e);
@@ -26,14 +26,16 @@ export default async function handler(req, res) {
   // 2. The Internet Archive's copy, when the site turned us away or hid its recipe data.
   if (!page || looksLikeBotWall(page.html) || !aiEnabled()) {
     const archived = await fetchArchived(url);
-    if (archived) {
+    archiveNote = archived.reason || "";
+    if (archived.html) {
       const data = extractJsonLd(archived.html);
       if (data) return send(res, 200, { method: "archive", archivedAt: archived.archivedAt, recipe: normalize(data, url) });
+      archiveNote = "no_recipe_data";
       if (!page && aiEnabled()) page = archived;
     }
   }
 
-  if (!page) return send(res, firstError.status, { error: firstError.code, message: firstError.message });
+  if (!page) return send(res, firstError.status, { error: firstError.code, message: firstError.message, archive: archiveNote });
 
   // 3. Claude reads the page text.
   if (!aiEnabled()) {
