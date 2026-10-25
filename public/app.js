@@ -67,6 +67,17 @@ const books = () => [...state.items.values()].filter(i => i.kind === "book").sor
 const sameSource = (a, b) => { const n = u => { try { const x = new URL(u); return (x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/+$/, "")).toLowerCase(); } catch { return ""; } }; const na = n(a); return !!na && na === n(b); };
 const findBySource = (src, exceptId) => src ? recipes().find(r => r.id !== exceptId && sameSource(r.source, src)) : null;
 const cookedText = r => { const c = r.cooked || []; if (!c.length) return ""; const last = new Date(c[c.length - 1]).toLocaleDateString(undefined, { month: "short", day: "numeric" }); return `Cooked ${c.length === 1 ? "once" : c.length + " times"} · last ${last}`; };
+// Meal plan: one stored item per day ("plan-2026-10-26"), so two phones planning different days never collide.
+const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const planDay = key => state.items.get("plan-" + key) || { id: "plan-" + key, kind: "planday", date: key, entries: [] };
+const savePlanDay = (key, entries) => { const cur = planDay(key); if (!entries.length && !state.items.has(cur.id)) return; if (!entries.length) return removeItem(cur.id); return save({ ...cur, entries }); };
+const MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"];
+function weekStartOf(d, offsetWeeks = 0) {
+  const startDay = settings.get("weekStart") === "mon" ? 1 : 0;
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() - startDay + 7) % 7) + offsetWeeks * 7);
+  return x;
+}
 const grocery = () => state.items.get("grocery") || { id: "grocery", kind: "grocery", items: [] };
 const saveGrocery = items => save({ ...grocery(), items });
 const listCount = () => grocery().items.filter(i => !i.done).length;
@@ -287,11 +298,11 @@ function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; 
 function render() {
   const v = state.view.name;
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; }
-  ["library", "books", "add", "settings", "list"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { list: "list", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
+  ["library", "books", "add", "settings", "list", "plan"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
+  const cur = { plan: "plan", list: "list", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   document.body.classList.toggle("cooking", v === "cook");
-  const fn = { list: vList, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
+  const fn = { plan: vPlan, list: vList, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v === "add") wireAdd();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -391,6 +402,7 @@ function vRecipe() {
   const fromBook = state.view.from === "book";
   const canCook = (r.steps || []).some(x => !x.startsWith("## "));
   const more = state.moreMenu ? `<div class="popover more-menu">
+      <button class="mitem" data-act="plan-recipe" data-id="${esc(r.id)}">Add to meal plan</button>
       <button class="mitem" data-act="edit" data-id="${esc(r.id)}">Edit recipe</button>
       <button class="mitem" data-act="book-menu" aria-expanded="${state.bookMenu}">Add to a book${inBooks.length ? ` (in ${inBooks.length})` : ""}</button>
       <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this today</button>
@@ -577,6 +589,74 @@ function openListPicker(r) {
   state.pickLines = lines;
 }
 
+function vPlan() {
+  const start = weekStartOf(new Date(), state.view.week || 0);
+  const days = [...Array(7)].map((_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+  const todayKey = dayKey(new Date());
+  const end = days[6];
+  const fmt = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const planned = days.flatMap(d => planDay(dayKey(d)).entries.filter(e => e.recipeId && state.items.has(e.recipeId)));
+  const order = m => MEALS.indexOf(m) < 0 ? 9 : MEALS.indexOf(m);
+  return `<div class="row"><h1>Meal plan</h1></div>
+    <div class="week-nav">
+      <button class="btn sm" data-act="week" data-d="-1" aria-label="Previous week">‹</button>
+      <span class="wk">${state.view.week ? "" : "This week · "}${esc(fmt(start))} – ${esc(fmt(end))}</span>
+      ${state.view.week ? `<button class="btn sm ghost" data-act="week" data-d="0">This week</button>` : ""}
+      <button class="btn sm" data-act="week" data-d="1" aria-label="Next week">›</button>
+    </div>
+    ${planned.length ? `<div class="row" style="margin-top:6px"><button class="btn primary" data-act="plan-to-list">Add this week to grocery list</button><span class="hint">${planned.length} planned meal${planned.length === 1 ? "" : "s"}</span></div>` : `<p class="hint" style="margin-top:6px">Tap + Add on a day to plan a recipe, or add a note like “Leftovers” or “Eat out”.</p>`}
+    <div class="days">${days.map(d => {
+      const key = dayKey(d), entries = [...planDay(key).entries].sort((a, b) => order(a.meal) - order(b.meal));
+      return `<section class="day${key === todayKey ? " today" : ""}" aria-label="${esc(d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}">
+        <div class="day-h"><span class="dn">${esc(d.toLocaleDateString(undefined, { weekday: "long" }))}</span><span class="dd">${esc(fmt(d))}</span>${key === todayKey ? `<span class="today-tag">Today</span>` : ""}<span class="spacer"></span>
+          <button class="btn sm ghost" data-act="plan-add" data-day="${key}">+ Add</button></div>
+        ${entries.map(e => {
+          const r = e.recipeId ? state.items.get(e.recipeId) : null;
+          return `<div class="plan-item">${r && r.image ? imgTag(r.image, "pimg") : `<span class="pimg blank" aria-hidden="true">${e.recipeId ? "🍽" : "✎"}</span>`}
+            ${e.recipeId ? `<button class="pt" data-act="open-recipe" data-id="${esc(e.recipeId)}">${esc(r ? r.title : e.title || "Deleted recipe")}</button>` : `<span class="pt note">${esc(e.note)}</span>`}
+            ${e.meal ? `<span class="meal">${esc(e.meal)}</span>` : ""}
+            <button class="btn sm ghost" data-act="plan-remove" data-day="${key}" data-id="${esc(e.id)}" aria-label="Remove from ${esc(d.toLocaleDateString(undefined, { weekday: "long" }))}">✕</button></div>`;
+        }).join("")}
+      </section>`;
+    }).join("")}</div>`;
+}
+// Picker for a day: pick a recipe (searchable) or write a note; choose the meal.
+function openPlanPicker(day, recipeId) {
+  state.planPick = { day, meal: state.planPick?.meal || "Dinner", recipeId: recipeId || "" };
+  drawPlanPicker();
+}
+function drawPlanPicker(q = "") {
+  const p = state.planPick;
+  const d = new Date(p.day + "T12:00:00");
+  const list = recipes().filter(r => !q || r.title.toLowerCase().includes(q.toLowerCase())).sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || a.title.localeCompare(b.title));
+  const next14 = [...Array(14)].map((_, i) => { const x = new Date(); x.setDate(x.getDate() + i); return x; });
+  modal(`<h2>${p.recipeId ? `Plan “${esc(state.items.get(p.recipeId)?.title || "")}”` : `Add to ${esc(d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }))}`}</h2>
+    ${p.recipeId ? `<div class="field"><label for="pp-day">Day</label><select id="pp-day">${next14.map(x => `<option value="${dayKey(x)}"${dayKey(x) === p.day ? " selected" : ""}>${esc(x.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }))}</option>`).join("")}</select></div>` : ""}
+    <div class="field"><label>Meal</label><div class="seg" role="group" aria-label="Meal">${MEALS.map(m => `<button data-act="pp-meal" data-v="${m}" aria-pressed="${p.meal === m}">${m}</button>`).join("")}</div></div>
+    ${p.recipeId ? `<div class="row"><button class="btn primary" data-act="pp-save-recipe">Add to plan</button><button class="btn" data-act="close-modal">Cancel</button></div>` : `
+    <input type="search" id="pp-q" placeholder="Search your recipes" value="${esc(q)}" aria-label="Search your recipes" autocomplete="off">
+    <div class="list pick-list">${list.length ? list.map(r => `<button class="pick-row" data-act="pp-pick" data-id="${esc(r.id)}">${r.image ? imgTag(r.image, "thumb") : ""}<span>${r.fav ? "♥ " : ""}${esc(r.title)}</span></button>`).join("") : `<p class="hint" style="padding:12px 14px">${recipes().length ? "No recipe matches." : "Save some recipes first, or add a note below."}</p>`}</div>
+    <form class="row" data-form="pp-note"><input type="text" id="pp-note" placeholder="Or a note: Leftovers, Eat out…" aria-label="Note for this day" style="flex:1;width:auto" autocomplete="off"><button class="btn">Add note</button></form>
+    <div class="row"><span class="spacer"></span><button class="btn" data-act="close-modal">Done</button></div>`}`);
+  const qi = $("#pp-q"); if (qi && q) { qi.focus(); qi.setSelectionRange(q.length, q.length); }
+}
+function addPlanEntry(day, entry) {
+  const cur = planDay(day).entries;
+  savePlanDay(day, [...cur, { id: newId("p"), meal: state.planPick?.meal || "Dinner", ...entry }]);
+}
+function planWeekToList() {
+  const start = weekStartOf(new Date(), state.view.week || 0);
+  const ids = [];
+  for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); planDay(dayKey(d)).entries.forEach(e => e.recipeId && state.items.has(e.recipeId) && ids.push(e.recipeId)); }
+  const rs = [...new Set(ids)].map(id => state.items.get(id));
+  const groups = rs.map(r => ({ r, lines: (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, 1); return (q ? q + " " : "") + rest; }) }));
+  state.weekPick = groups;
+  modal(`<h2>Groceries for the week</h2><p class="hint">Untick anything you already have.</p>
+    <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
+    <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" checked> ${esc(l)}</label>`).join("")}</div></section>`).join("")}</div>
+    <div class="row"><button class="btn primary" data-act="week-add-picked">Add to list</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+}
+
 function vBooks() {
   const bs = books();
   return `<h1>Recipe books</h1><p class="lede">Group recipes for a holiday, a person, a diet, or a week of dinners. A recipe can live in as many books as you like.</p>
@@ -643,6 +723,10 @@ function vSettings() {
         <p class="hint">${state.ai ? "On. Photos, pasted text, and sites without standard recipe data are read by Claude." : "Off. Links from most recipe sites still work. To read photos, pasted text, and other sites, add a Claude API key to this app in Vercel (the setup guide in your GitHub repo shows how)."}</p>
         ${state.locked || settings.get("access") ? `<div class="field"><label for="s-access">Access code</label><div class="row"><input type="password" id="s-access" value="${esc(settings.get("access"))}" autocomplete="off" style="flex:1;width:auto"><button class="btn" data-act="save-access">Save</button></div>
           <p class="hint">This app is locked so strangers can't use it. Enter the access code you set in Vercel.</p></div>` : ""}
+      </section>
+      <section class="panel stack"><h2>Meal plan</h2>
+        <div class="row"><span>Weeks start on</span><div class="seg" role="group" aria-label="Week starts on">
+          <button data-act="week-start" data-v="sun" aria-pressed="${settings.get("weekStart") !== "mon"}">Sunday</button><button data-act="week-start" data-v="mon" aria-pressed="${settings.get("weekStart") === "mon"}">Monday</button></div></div>
       </section>
       <section class="panel stack"><h2>What's new</h2>
         <div><button class="btn" data-act="tour">Take the tour</button></div>
@@ -718,7 +802,7 @@ async function importBackup(file) {
   if (!items) return toast("That file isn't a Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
-    if (!it || !it.id || !["recipe", "book", "grocery"].includes(it.kind)) continue;
+    if (!it || !it.id || !["recipe", "book", "grocery", "planday"].includes(it.kind)) continue;
     const cur = state.items.get(it.id);
     if (!cur) added++; else if ((it.updatedAt || 0) > (cur.updatedAt || 0)) updated++; else continue;
     state.items.set(it.id, it);
@@ -836,6 +920,22 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "week": state.view.week = +el.dataset.d === 0 ? 0 : (state.view.week || 0) + (+el.dataset.d); return render();
+    case "plan-add": return openPlanPicker(el.dataset.day);
+    case "plan-recipe": state.moreMenu = false; render(); return openPlanPicker(dayKey(new Date()), id);
+    case "pp-meal": state.planPick.meal = el.dataset.v; document.querySelectorAll("[data-act=pp-meal]").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === el.dataset.v)); return;
+    case "pp-pick": { const r = state.items.get(id); addPlanEntry(state.planPick.day, { recipeId: r.id, title: r.title }); toast(`Added ${r.title}`); if (state.view.name === "plan") render(); return drawPlanPicker($("#pp-q") ? $("#pp-q").value : ""); }
+    case "pp-save-recipe": { const r = state.items.get(state.planPick.recipeId), day = $("#pp-day").value; addPlanEntry(day, { recipeId: r.id, title: r.title }); closeModal(); return toast(`Planned for ${new Date(day + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}`); }
+    case "plan-remove": { const day = el.dataset.day; savePlanDay(day, planDay(day).entries.filter(e => e.id !== id)); return render(); }
+    case "plan-to-list": return planWeekToList();
+    case "week-add-picked": {
+      const have = grocery().items, add = [];
+      document.querySelectorAll(".lp:checked").forEach(c => { const [gi, li] = c.value.split(":").map(Number); const g = state.weekPick[gi]; const t = g.lines[li];
+        if (!have.some(h => !h.done && h.recipeId === g.r.id && h.text === t) && !add.some(a => a.recipeId === g.r.id && a.text === t)) add.push({ id: newId("g"), text: t, recipeId: g.r.id, recipeTitle: g.r.title, done: false }); });
+      saveGrocery([...have, ...add]); closeModal(); render();
+      return toast(add.length ? `Added ${add.length} item${add.length === 1 ? "" : "s"} to your list` : "Those are already on your list");
+    }
+    case "week-start": settings.set("weekStart", el.dataset.v); return render();
     case "units": state.units = el.dataset.v; settings.set("units", state.units); return render();
     case "list-pick": return openListPicker(state.items.get(id));
     case "pick-all": document.querySelectorAll(".lp").forEach(c => c.checked = el.dataset.v === "1"); return;
@@ -886,7 +986,7 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".steps li.step")) { e.preventDefault(); e.target.click(); }
   if (e.key === "Escape" && $("#modal-root").innerHTML) closeModal();
 });
-document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.focusQ = true; render(); } });
+document.addEventListener("input", e => { if (e.target.id === "pp-q") return drawPlanPicker(e.target.value); if (e.target.id === "q") { state.q = e.target.value; state.focusQ = true; render(); } });
 document.addEventListener("change", e => {
   if (e.target.id === "sort") { state.sort = e.target.value; render(); }
   if (e.target.id === "s-import" && e.target.files[0]) importBackup(e.target.files[0]);
@@ -895,6 +995,7 @@ document.addEventListener("change", e => {
 document.addEventListener("submit", e => {
   e.preventDefault(); const f = e.target.dataset.form;
   if (f === "recipe") return saveRecipeForm();
+  if (f === "pp-note") { const t = $("#pp-note").value.trim(); if (!t) return; addPlanEntry(state.planPick.day, { note: t.slice(0, 80) }); toast("Note added"); if (state.view.name === "plan") render(); return drawPlanPicker(); }
   if (f === "list-add") { const t = $("#la-text").value.trim(); if (!t) return; saveGrocery([...grocery().items, { id: newId("g"), text: t, recipeId: "", recipeTitle: "", done: false }]); render(); const i = $("#la-text"); if (i) i.focus(); return; }
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
   if (f === "quick-book") { const n = $("#qb-name").value.trim(); if (!n) return; createBook(n, e.target.dataset.recipe); toast(`Added to ${n}`); return render(); }

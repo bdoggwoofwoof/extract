@@ -12,6 +12,7 @@ const I = {
   cart: '<path d="M3 4h2l2.5 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/>',
   heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
   units: '<path d="M4 7h16"/><path d="M4 17h16"/><path d="M8 4l-4 3 4 3"/><path d="M16 14l4 3-4 3"/>',
+  plan: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
 };
 
@@ -37,7 +38,9 @@ export const TOUR = [
   { id: "favorites", added: "2026-10-25", icon: "heart", title: "Favorites and what you've cooked",
     body: "Tap ♡ to favorite a recipe, then filter your library to just those. Finishing cook mode, or tapping I made this today, keeps count, so you can sort by Most cooked. Saving a link you already have now tells you." },
   { id: "units", added: "2026-10-25", icon: "units", title: "US and metric",
-    body: "Tap Convert to metric (or Convert to US) on a recipe to switch cups, ounces and pounds to millilitres and grams, and oven temperatures between °F and °C. Your choice sticks for every recipe until you switch back." }
+    body: "Tap Convert to metric (or Convert to US) on a recipe to switch cups, ounces and pounds to millilitres and grams, and oven temperatures between °F and °C. Your choice sticks for every recipe until you switch back." },
+  { id: "meal-plan", added: "2026-10-25", icon: "plan", title: "Weekly meal plan",
+    body: "The Plan tab shows your week. Tap + Add on a day to pick a recipe for breakfast, lunch or dinner, or jot a note like Leftovers. Then tap Add this week to grocery list to shop for all of it at once." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";
