@@ -16,6 +16,7 @@ const I = {
   voice: '<path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
   stack: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
 };
 
@@ -49,7 +50,9 @@ export const TOUR = [
   { id: "bulk-import", added: "2026-10-25", icon: "stack", title: "Import many recipes at once",
     body: "Moving from another app? On Add, choose Many links and paste a whole batch. Extract reads and saves each one, and skips any you already have." },
   { id: "nutrition-print", added: "2026-10-25", icon: "chart", title: "Nutrition and printing",
-    body: "When a recipe's site lists nutrition facts, they're saved with the recipe under Nutrition per serving. More → Print recipe gives a clean, ad-free page for the fridge." }
+    body: "When a recipe's site lists nutrition facts, they're saved with the recipe under Nutrition per serving. More → Print recipe gives a clean, ad-free page for the fridge." },
+  { id: "sync", added: "2026-10-25", icon: "sync", title: "Sync between devices",
+    body: "In Settings, sign in with your email and a 6-digit code to keep recipes, books, your meal plan and grocery list in step on your phone and computer. While you're signed in, share links are short." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";
@@ -99,6 +102,10 @@ export function maybeShowTour(el) {
   if (!s.size) openTour(el, TOUR, "Welcome to Extract");
   else openTour(el, fresh, "What's new");
 }
-export function whatsNewHtml() {
-  return [...TOUR].reverse().map(t => `<li><strong>${esc(t.title)}</strong><span class="meta">${esc(new Date(t.added + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</span><p class="hint">${esc(t.body)}</p></li>`).join("");
+export function whatsNewHtml(show = 3) {
+  const li = t => `<li><strong>${esc(t.title)}</strong><span class="meta">${esc(new Date(t.added + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</span><p class="hint">${esc(t.body)}</p></li>`;
+  const all = [...TOUR].reverse();
+  const rest = all.slice(show);
+  return `<ul class="news">${all.slice(0, show).map(li).join("")}</ul>` +
+    (rest.length ? `<details class="news-more"><summary>Show all ${all.length} updates</summary><ul class="news">${rest.map(li).join("")}</ul></details>` : "");
 }

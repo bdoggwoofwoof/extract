@@ -298,3 +298,5 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
   .nutrition:not([open]) dl{display:grid}
   a{color:#000;text-decoration:none}
 }
+
+.news-more summary{cursor:pointer;color:var(--herb);font-weight:600;padding:4px 0 10px}

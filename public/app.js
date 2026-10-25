@@ -1,5 +1,6 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
 import { TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
+import * as sync from "/sync.js";
 import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
 
@@ -110,14 +111,25 @@ function saveLocalAll() { try { localStorage.setItem(LS_KEY, JSON.stringify([...
 function save(item) {
   item.updatedAt = Date.now(); if (!item.createdAt) item.createdAt = item.updatedAt;
   state.items.set(item.id, item);
+  if (sync.info().signedIn) sync.markDirty(item.id);
   if (useLocal) { saveLocalAll(); return Promise.resolve(); }
   return idb("readwrite", s => s.put(JSON.parse(JSON.stringify(item)))).catch(() => toast("Couldn't save that change. Your phone may be out of space."));
 }
 function removeItem(id) {
   state.items.delete(id);
+  if (sync.info().signedIn) sync.markDeleted(id);
   if (useLocal) { saveLocalAll(); return Promise.resolve(); }
   return idb("readwrite", s => s.delete(id)).catch(() => {});
 }
+
+// What sync needs from the app: read items, and store what arrives without re-queuing it.
+const syncHooks = {
+  allItems: () => [...state.items.values()],
+  get: id => state.items.get(id),
+  applyRemote: async item => { state.items.set(item.id, item); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.put(JSON.parse(JSON.stringify(item)))).catch(() => {}); },
+  applyRemoteDelete: async id => { state.items.delete(id); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.delete(id)).catch(() => {}); },
+  afterPull: () => { if (["library", "books", "book", "recipe", "plan", "list"].includes(state.view.name) && !document.querySelector(".scrim")) render(); }
+};
 
 /* ===== Server calls ===== */
 async function api(path, opts = {}) {
@@ -132,7 +144,7 @@ async function api(path, opts = {}) {
   return j;
 }
 async function loadStatus() {
-  try { const s = await api("/api/status"); state.ai = !!s.ai; state.locked = !!s.locked; state.online = true; }
+  try { const s = await api("/api/status"); state.ai = !!s.ai; state.locked = !!s.locked; state.syncCfg = s.sync || null; state.online = true; }
   catch { state.online = navigator.onLine; }
 }
 
@@ -155,10 +167,14 @@ async function unpack(s) {
 }
 const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; return o; };
 async function shareLinkFor(item) {
-  const payload = item.kind === "book"
+  const payload = sharePayloadFor(item);
+  if (sync.info().signedIn) { try { const id = await sync.createShare(payload); if (id) return location.origin + "/#s=" + id; } catch {} }
+  return location.origin + "/#r=" + await pack(payload);
+}
+function sharePayloadFor(item) {
+  return item.kind === "book"
     ? { v: 1, kind: "book", book: { name: item.name, description: item.description || "" }, recipes: (item.recipeIds || []).map(i => state.items.get(i)).filter(Boolean).map(strip) }
     : { v: 1, kind: "recipe", recipe: strip(item) };
-  return location.origin + "/#r=" + await pack(payload);
 }
 
 /* ===== Text export ===== */
@@ -296,6 +312,8 @@ async function importMany(text, tag) {
     try {
       const j = await api("/api/fetch?url=" + encodeURIComponent(urls[i]));
       const r = { ...normalize(j.recipe, j.recipe.source || urls[i]), kind: "recipe", id: newId("r") };
+      const same = findBySource(r.source); // a different link to a recipe you already have
+      if (same) { li.innerHTML = `✓ Already saved: <a href="#" data-act="open-recipe" data-id="${esc(same.id)}">${esc(same.title)}</a>`; continue; }
       if (tag) r.tags = [...new Set([...(r.tags || []), tag])];
       await save(r); ok++;
       li.innerHTML = `✓ <a href="#" data-act="open-recipe" data-id="${esc(r.id)}">${esc(r.title)}</a>`;
@@ -779,6 +797,36 @@ function vShared() {
 }
 function vMessage() { return `<div class="empty"><strong>${esc(state.view.title)}</strong><span>${esc(state.view.body)}</span><button class="btn" data-act="nav" data-v="library">Go to my recipes</button></div>`; }
 
+function syncSection() {
+  const i = sync.info();
+  const ago = t => { if (!t) return "not yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : new Date(t).toLocaleDateString(); };
+  if (!i.configured) return `<section class="panel stack" id="sync-panel"><h2>Sync between devices</h2>
+    <p class="hint">Off. To keep recipes, books, your meal plan and grocery list in step across your phone and computer, connect a free Supabase project. The setup guide in your GitHub repo (README, “Sync between devices”) takes about 10 minutes.</p></section>`;
+  if (i.signedIn) return `<section class="panel stack" id="sync-panel"><h2>Sync between devices</h2>
+    <p class="hint">On for <strong>${esc(i.email)}</strong>. ${i.syncing ? "Syncing…" : `Last synced ${esc(ago(i.lastSync))}.`}${i.error ? ` <span class="status err">${esc(i.error)}</span>` : ""}</p>
+    <div class="row"><button class="btn" data-act="sync-now" ${i.syncing ? "disabled" : ""}>Sync now</button><span class="spacer"></span><button class="btn ghost" data-act="sync-out">Sign out</button></div>
+    <p class="hint">Sign in with the same email on your other devices. Share links are short while you're signed in.</p></section>`;
+  const sent = state.syncEmailSent;
+  return `<section class="panel stack" id="sync-panel"><h2>Sync between devices</h2>
+    <p class="hint">Sign in with your email to keep everything in step on all your devices. We'll email you a 6-digit code. No password.</p>
+    ${sent ? `<form class="stack" data-form="sync-verify" style="gap:10px">
+        <p class="hint">Code sent to <strong>${esc(sent)}</strong>. It can take a minute; check spam too.</p>
+        <div class="row"><input type="text" id="sync-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" aria-label="Code from your email" maxlength="10" style="flex:1;width:auto"><button class="btn primary">Sign in</button></div>
+        <div class="row"><button type="button" class="btn sm ghost" data-act="sync-restart">Use a different email</button><button type="button" class="btn sm ghost" data-act="sync-resend">Send a new code</button></div>
+      </form>` : `<form class="row" data-form="sync-email">
+        <input type="email" id="sync-email" autocomplete="email" placeholder="you@example.com" aria-label="Email" required style="flex:1;width:auto">
+        <button class="btn primary">Email me a code</button></form>`}
+    <span class="status" id="sync-status"></span></section>`;
+}
+function redrawSync() { const p = $("#sync-panel"); if (p && state.view.name === "settings" && !p.contains(document.activeElement)) p.outerHTML = syncSection(); }
+sync.onChange(redrawSync);
+const syncStatus = (msg, err) => { const s = $("#sync-status"); if (s) { s.className = "status" + (err ? " err" : ""); s.textContent = msg; } };
+async function sendSyncCode(email) {
+  syncStatus("Sending…");
+  try { await sync.sendCode(email); state.syncEmailSent = email; render(); const c = $("#sync-code"); if (c) c.focus(); }
+  catch (e) { syncStatus(/rate|seconds/i.test(e.message || "") ? "Please wait a minute before asking for another code." : "Couldn't send the code. Check the email address and try again.", true); }
+}
+
 function vSettings() {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -802,13 +850,14 @@ function vSettings() {
         ${state.locked || settings.get("access") ? `<div class="field"><label for="s-access">Access code</label><div class="row"><input type="password" id="s-access" value="${esc(settings.get("access"))}" autocomplete="off" style="flex:1;width:auto"><button class="btn" data-act="save-access">Save</button></div>
           <p class="hint">This app is locked so strangers can't use it. Enter the access code you set in Vercel.</p></div>` : ""}
       </section>
+      ${syncSection()}
       <section class="panel stack"><h2>Meal plan</h2>
         <div class="row"><span>Weeks start on</span><div class="seg" role="group" aria-label="Week starts on">
           <button data-act="week-start" data-v="sun" aria-pressed="${settings.get("weekStart") !== "mon"}">Sunday</button><button data-act="week-start" data-v="mon" aria-pressed="${settings.get("weekStart") === "mon"}">Monday</button></div></div>
       </section>
       <section class="panel stack"><h2>What's new</h2>
         <div><button class="btn" data-act="tour">Take the tour</button></div>
-        <ul class="news">${whatsNewHtml()}</ul>
+        ${whatsNewHtml()}
       </section>
       <section class="panel stack"><h2>Backup</h2>
         <p class="hint">${n} recipe${n === 1 ? "" : "s"} and ${nb} book${nb === 1 ? "" : "s"} are saved on this device${state.persisted ? ", protected from automatic cleanup" : ""}. Save a backup now and then, or to move to a new phone.</p>
@@ -830,7 +879,7 @@ async function openShare(item) {
   const long = link.length > 8000;
   modal(`<h2>Share “${esc(title)}”</h2>
     ${link ? `<div class="row">${navigator.share ? `<button class="btn primary" data-act="native-share">Share link…</button>` : ""}<button class="btn${navigator.share ? "" : " primary"}" data-act="copy-link">Copy link</button></div>
-      <p class="hint">The link holds the ${isBook ? "whole book" : "recipe"} itself, so it opens for anyone, no account needed. It's a copy: later edits don't change it.${long ? " This one is long, so some messaging apps may cut it off. If that happens, send it as text." : ""}</p>
+      <p class="hint">${/#s=/.test(link) ? `A short link to a copy of this ${isBook ? "book" : "recipe"}. Anyone with it can open it and save their own, no account needed. Later edits don't change it.` : `The link holds the ${isBook ? "whole book" : "recipe"} itself, so it opens for anyone, no account needed. It's a copy: later edits don't change it.${long ? " This one is long, so some messaging apps may cut it off. If that happens, send it as text, or turn on sync in Settings for short links." : ""}`}</p>
       <input type="text" id="sh-link" readonly value="${esc(link)}" aria-label="Share link">` : ""}
     <div class="field"><label for="sh-text">As text, for a message or email</label><textarea id="sh-text" rows="6" readonly>${esc(text)}</textarea></div>
     <div class="row"><button class="btn" data-act="copy-text">Copy text</button><span class="spacer"></span><button class="btn" data-act="close-modal">Done</button></div>`);
@@ -885,6 +934,7 @@ async function importBackup(file) {
     if (!cur) added++; else if ((it.updatedAt || 0) > (cur.updatedAt || 0)) updated++; else continue;
     state.items.set(it.id, it);
     if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.put(it)).catch(() => {});
+    if (sync.info().signedIn) sync.markDirty(it.id);
   }
   toast(`Restored: ${added} new, ${updated} updated.`); render();
 }
@@ -999,6 +1049,10 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "sync-now": return sync.syncNow();
+    case "sync-out": await sync.signOut(); toast("Signed out. Your recipes stay on this device."); return render();
+    case "sync-restart": state.syncEmailSent = ""; return render();
+    case "sync-resend": return sendSyncCode(state.syncEmailSent);
     case "read-aloud": state.readAloud = !state.readAloud; settings.set("readAloud", state.readAloud ? "1" : ""); if (state.readAloud) speakStep(); else { try { speechSynthesis.cancel(); } catch {} } return render();
     case "voice": if (state.voiceOn) stopVoice(); else startVoice(); return render();
     case "print": state.moreMenu = false; render(); return setTimeout(() => window.print(), 50);
@@ -1077,6 +1131,14 @@ document.addEventListener("change", e => {
 document.addEventListener("submit", e => {
   e.preventDefault(); const f = e.target.dataset.form;
   if (f === "recipe") return saveRecipeForm();
+  if (f === "sync-email") { const em = $("#sync-email").value.trim(); if (em) sendSyncCode(em); return; }
+  if (f === "sync-verify") {
+    const code = $("#sync-code").value.replace(/\D/g, ""); if (code.length < 6) return syncStatus("Enter the 6-digit code from the email.", true);
+    syncStatus("Signing in…");
+    sync.verifyCode(state.syncEmailSent, code).then(() => { state.syncEmailSent = ""; toast("Signed in. Syncing your recipes…"); render(); })
+      .catch(() => syncStatus("That code didn't work. Check it, or send a new one.", true));
+    return;
+  }
   if (f === "pp-note") { const t = $("#pp-note").value.trim(); if (!t) return; addPlanEntry(state.planPick.day, { note: t.slice(0, 80) }); toast("Note added"); if (state.view.name === "plan") render(); return drawPlanPicker(); }
   if (f === "list-add") { const t = $("#la-text").value.trim(); if (!t) return; saveGrocery([...grocery().items, { id: newId("g"), text: t, recipeId: "", recipeTitle: "", done: false }]); render(); const i = $("#la-text"); if (i) i.focus(); return; }
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
@@ -1096,6 +1158,15 @@ watchTimers(ts => {
 
 /* ===== Boot ===== */
 async function openIncoming() {
+  // A short share link: #s=... (needs this app's sync to be set up)
+  const ms = location.hash.match(/^#s=([A-Za-z0-9]{8,32})$/);
+  if (ms) {
+    try {
+      const payload = await sync.getShare(ms[1]);
+      if (payload && ((payload.kind === "recipe" && payload.recipe) || (payload.kind === "book" && Array.isArray(payload.recipes)))) return go({ name: "shared", payload, recipeIdx: null });
+      return go({ name: "message", title: "This share isn't available", body: "It may have been removed. Ask for the recipe again." });
+    } catch { return go({ name: "message", title: "Couldn't open this share", body: "Check your connection and open the link again." }); }
+  }
   // A shared recipe link: #r=...
   const m = location.hash.match(/^#r=([A-Za-z0-9_-]+)$/);
   if (m) {
@@ -1117,9 +1188,11 @@ async function openIncoming() {
 (async function boot() {
   await loadAll();
   await Promise.race([loadStatus(), new Promise(r => setTimeout(r, 2500))]);
+  const syncReady = state.syncCfg ? sync.init(state.syncCfg, syncHooks) : Promise.resolve(false);
+  if (/^#s=/.test(location.hash)) await Promise.race([syncReady, new Promise(r => setTimeout(r, 6000))]);
   try { if (navigator.storage && navigator.storage.persist) state.persisted = await navigator.storage.persisted() || await navigator.storage.persist(); } catch {}
   await openIncoming();
   if (state.view.name !== "shared") maybeShowTour($("#modal-root"));
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();
-window.addEventListener("hashchange", () => { if (/^#r=/.test(location.hash)) openIncoming(); });
+window.addEventListener("hashchange", () => { if (/^#[rs]=/.test(location.hash)) openIncoming(); });
