@@ -280,7 +280,7 @@ const EXAMPLE = {
 };
 
 /* ===== Navigation ===== */
-function go(view) { state.view = view; state.confirm = null; state.bookMenu = false; render(); window.scrollTo(0, 0); }
+function go(view) { state.view = view; state.confirm = null; state.bookMenu = false; state.moreMenu = false; render(); window.scrollTo(0, 0); }
 function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; state.draftArchived = archivedAt || ""; go({ name: "edit" }); }
 
 /* ===== Render ===== */
@@ -342,7 +342,7 @@ function stepHtml(text, label) {
   return out + esc(text.slice(at));
 }
 function resetCook(id) { if (state.cook.id !== id) state.cook = { id, scale: 1, ings: new Set(), steps: new Set() }; }
-function cookBody(r) {
+function cookBody(r, actions = "") {
   const c = state.cook, base = r.servings || null, k = c.scale;
   let i = 0;
   const ings = (r.ingredients || []).map(line => {
@@ -371,6 +371,7 @@ function cookBody(r) {
       <h1>${esc(r.title)}</h1>
       ${r.source ? `<a class="src" href="${esc(r.source)}" target="_blank" rel="noopener">${esc(domain(r.source) || r.source)} ↗</a>` : ""}
       <div class="facts">${facts.join("")}</div>
+      ${actions}
     </div>
     <div class="cook">
       <section><div class="row"><h3>Ingredients</h3><span class="spacer"></span>${c.ings.size ? `<button class="btn sm ghost" data-act="clear-checks">Uncheck all</button>` : ""}</div><ul class="ings">${ings || `<li class="hint">No ingredients listed.</li>`}</ul></section>
@@ -388,22 +389,25 @@ function vRecipe() {
   const menu = state.bookMenu ? `<div class="popover">${bs.length ? bs.map(b => `<label class="check"><input type="checkbox" data-act="book-toggle" data-book="${esc(b.id)}" data-recipe="${esc(r.id)}" ${(b.recipeIds || []).includes(r.id) ? "checked" : ""}> ${esc(b.name)}</label>`).join("") : `<p class="hint" style="padding:8px 14px">No books yet.</p>`}
       <div style="padding:8px 14px;border-top:1px solid var(--line)"><form class="row" data-form="quick-book" data-recipe="${esc(r.id)}"><input type="text" id="qb-name" placeholder="New book name" aria-label="New book name" style="flex:1;width:auto"><button class="btn sm primary">Create</button></form></div></div>` : "";
   const fromBook = state.view.from === "book";
-  return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">← ${fromBook ? "Back to book" : "All recipes"}</button>
-    <div class="stack">
+  const canCook = (r.steps || []).some(x => !x.startsWith("## "));
+  const more = state.moreMenu ? `<div class="popover more-menu">
+      <button class="mitem" data-act="edit" data-id="${esc(r.id)}">Edit recipe</button>
+      <button class="mitem" data-act="book-menu" aria-expanded="${state.bookMenu}">Add to a book${inBooks.length ? ` (in ${inBooks.length})` : ""}</button>
+      <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this today</button>
+      <button class="mitem danger" data-act="delete-ask" data-id="${esc(r.id)}">Delete recipe</button></div>` : "";
+  const actions = `<div class="stack" style="gap:10px">
       <div class="actions">
-        ${(r.steps || []).some(x => !x.startsWith("## ")) ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">Start cooking</button>` : ""}
-        <button class="btn" data-act="edit" data-id="${esc(r.id)}">Edit</button>
+        ${canCook ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">Start cooking</button>` : ""}
         <button class="btn fav-btn" data-act="fav" data-id="${esc(r.id)}" aria-pressed="${!!r.fav}" aria-label="${r.fav ? "Remove from favorites" : "Add to favorites"}">${r.fav ? "♥" : "♡"}</button>
         <button class="btn" data-act="list-pick" data-id="${esc(r.id)}">Add to list</button>
-        <button class="btn" data-act="book-menu" aria-expanded="${state.bookMenu}">Books${inBooks.length ? ` · ${inBooks.length}` : ""}</button>
         <button class="btn" data-act="share" data-id="${esc(r.id)}">Share</button>
-        <button class="btn danger ghost" data-act="delete-ask" data-id="${esc(r.id)}">Delete</button>
+        <button class="btn" data-act="more" aria-expanded="${!!state.moreMenu}" aria-label="More actions">More</button>
       </div>
-      ${menu}${confirm}
-      <div class="row meta">${inBooks.length ? `<span>In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}</span>` : ""}
-        ${cookedText(r) ? `<span>${esc(cookedText(r))}</span>` : ""}<button class="linkish" data-act="cooked" data-id="${esc(r.id)}">I made this today</button></div>
-    </div>
-    <div style="margin-top:18px">${cookBody(r)}</div>`;
+      ${more}${menu}${confirm}
+      ${inBooks.length || cookedText(r) ? `<p class="hint">${inBooks.length ? `In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}` : ""}${inBooks.length && cookedText(r) ? " · " : ""}${esc(cookedText(r))}</p>` : ""}
+    </div>`;
+  return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">← ${fromBook ? "Back to book" : "All recipes"}</button>
+    ${cookBody(r, actions)}`;
 }
 
 function cookSteps(r) {
@@ -800,11 +804,12 @@ document.addEventListener("click", async e => {
     case "edit": state.draft = JSON.parse(JSON.stringify(state.items.get(id))); return go({ name: "edit" });
     case "cancel-edit": { const d = state.draft; state.draft = null; return go(d && d.id ? { name: "recipe", id: d.id } : { name: "add" }); }
     case "add-tag": { const f = $("#f-tags"); const cur = f.value.split(",").map(s => s.trim()).filter(Boolean); if (!cur.includes(el.dataset.tag)) cur.push(el.dataset.tag); f.value = cur.join(", "); return; }
-    case "delete-ask": case "delete-book-ask": state.confirm = id; return render();
+    case "delete-ask": case "delete-book-ask": state.confirm = id; state.moreMenu = false; return render();
     case "confirm-no": state.confirm = null; return render();
     case "delete-yes": return deleteRecipe(id);
     case "delete-book-yes": removeItem(id); toast("Book deleted"); return go({ name: "books" });
-    case "book-menu": state.bookMenu = !state.bookMenu; return render();
+    case "book-menu": state.bookMenu = !state.bookMenu; state.moreMenu = false; return render();
+    case "more": state.moreMenu = !state.moreMenu; state.bookMenu = false; return render();
     case "book-toggle": { const b = state.items.get(el.dataset.book), rid = el.dataset.recipe, has = (b.recipeIds || []).includes(rid);
       save({ ...b, recipeIds: has ? b.recipeIds.filter(x => x !== rid) : [...(b.recipeIds || []), rid] }); toast(has ? `Removed from ${b.name}` : `Added to ${b.name}`); return render(); }
     case "book-remove": { const b = state.items.get(el.dataset.book); save({ ...b, recipeIds: b.recipeIds.filter(x => x !== el.dataset.recipe) }); return render(); }
@@ -841,7 +846,13 @@ document.addEventListener("click", async e => {
       saveGrocery([...have, ...fresh]); closeModal(); render();
       return toast(fresh.length ? `Added ${fresh.length} item${fresh.length === 1 ? "" : "s"} to your list` : "Those are already on your list");
     }
-    case "list-check": { const items = grocery().items.map(i => i.id === id ? { ...i, done: el.checked } : i); saveGrocery(items); return render(); }
+    case "list-check": {
+      // Cross it off where it is; re-sort after a pause so the list doesn't jump under your thumb.
+      const items = grocery().items.map(i => i.id === id ? { ...i, done: el.checked } : i); saveGrocery(items);
+      el.closest(".gitem").classList.toggle("got", el.checked);
+      clearTimeout(state.listTimer); state.listTimer = setTimeout(() => { if (state.view.name === "list") render(); }, 1600);
+      return;
+    }
     case "list-clear-got": saveGrocery(grocery().items.filter(i => !i.done)); return render();
     case "list-clear-ask": state.confirm = "list"; return render();
     case "list-clear-yes": state.confirm = null; saveGrocery([]); return render();

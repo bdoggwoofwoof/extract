@@ -4,8 +4,12 @@ A free, ad-free recipe app for your phone. Paste or share a link to any recipe p
 
 - Works on iPhone and Android as a home-screen app, and on a computer in any browser.
 - Recipes are stored on your phone and work offline in the kitchen.
-- Most big recipe sites work instantly, for free. They publish standard recipe data, which the app reads directly.
-- Optional: add a Claude API key to also read recipe photos, pasted text, and sites without standard recipe data.
+- Most recipe sites work instantly and for free. Extract reads their standard recipe data, and for sites that block readers (like Allrecipes or Serious Eats) it reads the public copy saved by the Internet Archive.
+- **Cook mode:** one big step at a time, with that step's ingredients shown and tappable times that start kitchen timers.
+- **Grocery list** from any recipe, scaled to your servings, plus your own items.
+- **Photos, favorites, a cooked count, US/metric conversion**, categories, and recipe books.
+- A short tour on first open, and a What's new note after each update.
+- Optional: add a Claude API key to also read recipe photos, pasted text, and sites without recipe data.
 
 ---
 
@@ -44,6 +48,10 @@ Without this, links from sites that publish standard recipe data work fine. Most
 3. Redeploy: open **Deployments**, then on the latest one tap **⋯ → Redeploy**.
 
 Optional: set `RECIPE_MODEL` to use a different Claude model. The default is `claude-haiku-5-5`.
+
+## Adding to the tour
+
+Every new feature gets an entry in `public/tour.js` (`TOUR`). People who already took the tour see only the new entries, under "What's new", the next time they open the app.
 
 ## Sharing
 

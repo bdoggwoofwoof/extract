@@ -235,3 +235,10 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .heart{color:var(--danger)}
 .fav-btn{font-size:20px;line-height:1;min-width:44px;color:var(--danger)}
 .linkish{background:none;border:0;padding:0;color:var(--herb);font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+
+/* recipe actions */
+.more-menu{display:flex;flex-direction:column;padding:4px 0}
+.mitem{background:none;border:0;text-align:left;padding:11px 16px;font-weight:600;cursor:pointer;color:var(--ink)}
+.mitem:hover{background:var(--herb-soft)}
+.mitem.danger{color:var(--danger)}
+.cooking .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
