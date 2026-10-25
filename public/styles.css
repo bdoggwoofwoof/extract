@@ -28,7 +28,8 @@ html{-webkit-text-size-adjust:100%}
    Making the page at least screen-tall restores the full viewport. Elsewhere this works out to 100%. */
 /* Room kept clear above the home-screen swipe bar. Home-screen apps get a little extra. */
 :root{--safe-b:env(safe-area-inset-bottom,0px)}
-@media (display-mode: standalone) and (pointer: coarse){ :root{--safe-b:calc(max(env(safe-area-inset-bottom,0px), 20px) + 8px)} }
+@media (display-mode: standalone) and (pointer: coarse){ :root{--safe-b:max(env(safe-area-inset-bottom,0px), 20px)} }
+:root.fitted{--safe-b:var(--fit-b)}
 @media (display-mode: standalone){
   html{min-height:calc(100% + env(safe-area-inset-top,0px));min-height:min(100lvh, calc(100% + env(safe-area-inset-top,0px)))}
 }

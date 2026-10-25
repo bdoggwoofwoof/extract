@@ -28,6 +28,35 @@
 <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" id="touch-icon">
 <script>
+  /* Fit to this phone's screen. The first time the home-screen app opens, it measures how much room the
+     swipe bar at the bottom needs and saves it. Every launch after that uses the saved size, so the bottom
+     buttons sit in the same place each time. A new install (or a different phone) measures again. */
+  (function () {
+    var root = document.documentElement;
+    var standalone = navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+    if (!standalone || !matchMedia("(pointer: coarse)").matches) return;
+    var key = Math.min(screen.width, screen.height) + "x" + Math.max(screen.width, screen.height);
+    var fit = null; try { fit = JSON.parse(localStorage.getItem("rk-fit") || "null"); } catch (e) {}
+    function apply(f) { root.style.setProperty("--fit-b", f.bottom + "px"); root.classList.add("fitted"); }
+    if (fit && fit.key === key && typeof fit.bottom === "number") return apply(fit);
+    function measure() {
+      var probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;left:0;top:0;width:0;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";
+      document.body.appendChild(probe);
+      var inset = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+      probe.remove();
+      // Phones with a swipe bar instead of a home button are at least 812pt tall and need 34pt.
+      // iOS sometimes reports 0 here on first launch, so fall back to that.
+      var iphoneBar = /iP(hone|od)/.test(navigator.userAgent) && Math.max(screen.width, screen.height) >= 812 ? 34 : 0;
+      var f = { key: key, bottom: Math.round(Math.max(inset, iphoneBar)) };
+      try { localStorage.setItem("rk-fit", JSON.stringify(f)); } catch (e) {}
+      apply(f);
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { requestAnimationFrame(measure); });
+    else requestAnimationFrame(measure);
+  })();
+</script>
+<script>
   /* Home-screen icon: the phone reads these when Extract is added to the home screen.
      "Match my phone" picks light or dark from the phone's mode at that moment. */
   (function () {
