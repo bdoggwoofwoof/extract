@@ -1,4 +1,5 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
+import { TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -207,7 +208,7 @@ async function fetchFromLink(raw) {
   setStatus('<span class="spin"></span> Fetching the recipe…'); setBusy(true);
   try {
     const j = await api("/api/fetch?url=" + encodeURIComponent(url));
-    openDraft(normalize(j.recipe, j.recipe.source || url));
+    openDraft(normalize(j.recipe, j.recipe.source || url), null, j.method === "archive" ? j.archivedAt : "");
   } catch (e) {
     setStatus(esc(e.message), true);
     if (e.error === "site_blocked" || e.error === "no_data" || e.error === "no_recipe") {
@@ -247,6 +248,8 @@ async function extractFromPhoto(file) {
   finally { setBusy(false); }
 }
 
+const archiveDate = ts => { const m = String(ts).match(/^(\d{4})(\d{2})(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "recently"; };
+
 /* ===== Example ===== */
 const EXAMPLE = {
   title: "Red Lentil Soup with Lemon", source: "", servings: 4, yield: "", prepTime: "10 min", cookTime: "30 min", totalTime: "40 min",
@@ -257,7 +260,7 @@ const EXAMPLE = {
 
 /* ===== Navigation ===== */
 function go(view) { state.view = view; state.confirm = null; state.bookMenu = false; render(); window.scrollTo(0, 0); }
-function openDraft(r, id) { state.draft = { ...r, id: id || null }; go({ name: "edit" }); }
+function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; state.draftArchived = archivedAt || ""; go({ name: "edit" }); }
 
 /* ===== Render ===== */
 function render() {
@@ -365,6 +368,7 @@ function vEdit() {
   return `<button class="back" data-act="cancel-edit">← Cancel</button>
     <h1>${d.id ? "Edit recipe" : "Check it, then save"}</h1>
     ${d.id ? "" : `<p class="lede">Fix anything that came through wrong. Nothing is saved until you tap Save recipe.</p>`}
+    ${!d.id && state.draftArchived ? `<p class="notice" style="margin-top:12px">This site blocks readers, so this came from the Internet Archive's copy saved ${esc(archiveDate(state.draftArchived))}. If the recipe changed since then, check the original.</p>` : ""}
     <form class="stack" data-form="recipe" style="margin-top:20px">
       <div class="field"><label for="f-title">Title</label><input type="text" id="f-title" value="${esc(d.title)}" required></div>
       <div class="grid4">
@@ -499,6 +503,10 @@ function vSettings() {
         <p class="hint">${state.ai ? "On. Photos, pasted text, and sites without standard recipe data are read by Claude." : "Off. Links from most recipe sites still work. To read photos, pasted text, and other sites, add a Claude API key to this app in Vercel (the setup guide in your GitHub repo shows how)."}</p>
         ${state.locked || settings.get("access") ? `<div class="field"><label for="s-access">Access code</label><div class="row"><input type="password" id="s-access" value="${esc(settings.get("access"))}" autocomplete="off" style="flex:1;width:auto"><button class="btn" data-act="save-access">Save</button></div>
           <p class="hint">This app is locked so strangers can't use it. Enter the access code you set in Vercel.</p></div>` : ""}
+      </section>
+      <section class="panel stack"><h2>What's new</h2>
+        <div><button class="btn" data-act="tour">Take the tour</button></div>
+        <ul class="news">${whatsNewHtml()}</ul>
       </section>
       <section class="panel stack"><h2>Backup</h2>
         <p class="hint">${n} recipe${n === 1 ? "" : "s"} and ${nb} book${nb === 1 ? "" : "s"} are saved on this device${state.persisted ? ", protected from automatic cleanup" : ""}. Save a backup now and then, or to move to a new phone.</p>
@@ -663,6 +671,7 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "tour": return openTour($("#modal-root"), TOUR, "Tour");
   }
 });
 document.addEventListener("keydown", e => {
@@ -707,6 +716,7 @@ async function openIncoming() {
   await Promise.race([loadStatus(), new Promise(r => setTimeout(r, 2500))]);
   try { if (navigator.storage && navigator.storage.persist) state.persisted = await navigator.storage.persisted() || await navigator.storage.persist(); } catch {}
   await openIncoming();
+  if (state.view.name !== "shared") maybeShowTour($("#modal-root"));
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();
 window.addEventListener("hashchange", () => { if (/^#r=/.test(location.hash)) openIncoming(); });

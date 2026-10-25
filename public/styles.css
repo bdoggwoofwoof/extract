@@ -160,3 +160,19 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--herb);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+/* tour */
+.tour{align-items:flex-start;gap:12px;padding:24px}
+.tour h2{font-size:22px;line-height:1.2}
+.tour p{margin:0;font-family:var(--body);font-size:17px;line-height:1.5;max-width:46ch}
+.tour-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tour-icon{width:56px;height:56px;border-radius:14px;background:var(--herb-soft);display:grid;place-items:center}
+.tour-icon svg{width:30px;height:30px;fill:none;stroke:var(--herb);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tour-dots{display:flex;gap:6px;margin-top:4px}
+.tour-dots span{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.tour-dots span.on{background:var(--herb);width:18px;border-radius:4px}
+.tour-actions{width:100%;margin-top:6px}
+.news{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.news li{display:flex;flex-direction:column;gap:2px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.news li:last-child{border-bottom:0;padding-bottom:0}
+.notice{background:var(--herb-soft);border-radius:8px;padding:10px 12px;font-size:14px}

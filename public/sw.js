@@ -1,6 +1,6 @@
 // Keeps the app working offline: the app itself is cached; recipe fetching needs a connection.
-const CACHE = "extract-v1";
-const SHELL = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
+const CACHE = "extract-v2";
+const SHELL = ["/", "/index.html", "/app.js", "/tour.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
