@@ -1,4 +1,4 @@
-# Recipe Keep
+# Extract
 
 A free, ad-free recipe app for your phone. Paste or share a link to any recipe page and get just the recipe: ingredients and steps, no life story. Save recipes, sort them into categories and recipe books, scale servings while you cook, and share them with anyone.
 
@@ -13,7 +13,7 @@ A free, ad-free recipe app for your phone. Paste or share a link to any recipe p
 
 1. Go to [vercel.com/new](https://vercel.com/new) and import this GitHub repository.
 2. Leave every setting at its default and click **Deploy**. The project settings in `vercel.json` handle the rest.
-3. When it finishes, Vercel gives you an address like `recipe-keep.vercel.app`. That's your app.
+3. When it finishes, Vercel gives you an address like `extract-yourname.vercel.app`. That's your app.
 
 To use your own domain, for example `recipes.bnewt.com`, open the project in Vercel, go to **Settings → Domains**, and add it.
 
@@ -27,8 +27,8 @@ Open it from the home-screen icon from then on. On iPhone, the home-screen app k
 
 ## 3. Save recipes
 
-- **Android:** on any recipe page, tap **Share → Recipe Keep**. The app opens and fetches the recipe.
-- **iPhone:** on the recipe page, tap **Share → Copy**. Open Recipe Keep, tap **Add**, then **Paste link**.
+- **Android:** on any recipe page, tap **Share → Extract**. The app opens and fetches the recipe.
+- **iPhone:** on the recipe page, tap **Share → Copy**. Open Extract, tap **Add**, then **Paste link**.
 - **Any phone:** you can also type or paste a link into the Link box, or use **Type it in**.
 
 Every recipe opens on a review screen first, so you can fix anything before saving.

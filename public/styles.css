@@ -1,4 +1,4 @@
-/* Recipe Keep — herb-green bar, index-card library, two-column cook view that stacks on phones.
+/* Extract — herb-green bar, index-card library, two-column cook view that stacks on phones.
    On phones the main navigation becomes a bottom tab bar. */
 :root{
   --paper:#F4F6F1; --card:#FFFFFF; --ink:#1D2620; --muted:#5C675F; --line:#D8DED3;

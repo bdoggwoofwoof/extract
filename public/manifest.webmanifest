@@ -1,6 +1,6 @@
 {
-  "name": "Recipe Keep",
-  "short_name": "Recipes",
+  "name": "Extract",
+  "short_name": "Extract",
   "description": "Paste a recipe link, get just the recipe.",
   "id": "/",
   "start_url": "/",

@@ -1,4 +1,4 @@
-/* Recipe Keep — app logic. Recipes and books are stored on this device (IndexedDB). */
+/* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -55,7 +55,7 @@ const recipes = () => [...state.items.values()].filter(i => i.kind === "recipe")
 const books = () => [...state.items.values()].filter(i => i.kind === "book").sort((a, b) => a.name.localeCompare(b.name));
 
 /* ===== Storage on this device ===== */
-const DB_NAME = "recipe-keep", STORE = "items", LS_KEY = "recipe-keep-v1";
+const DB_NAME = "extract", STORE = "items", LS_KEY = "extract-v1";
 let dbPromise = null, useLocal = false;
 function openDb() {
   return new Promise((res, rej) => {
@@ -484,14 +484,14 @@ function vSettings() {
   return `<h1>Settings</h1>
     <div class="stack" style="margin-top:20px">
       <section class="panel stack"><h2>Put it on your home screen</h2>
-        ${standalone ? `<p class="hint">Installed. You're using Recipe Keep as an app.</p>` : `
+        ${standalone ? `<p class="hint">Installed. You're using Extract as an app.</p>` : `
         <ol class="steps-howto"><li><strong>iPhone:</strong> open this page in Safari, tap the Share button, then <em>Add to Home Screen</em>.</li>
         <li><strong>Android:</strong> open this page in Chrome, tap the ⋮ menu, then <em>Install app</em> (or <em>Add to Home screen</em>).</li></ol>`}
       </section>
       <section class="panel stack"><h2>Save recipes from other apps</h2>
         <ol class="steps-howto">
-          <li><strong>Android:</strong> once installed, tap Share on any recipe page and pick <em>Recipe Keep</em>. It opens and fetches the recipe.</li>
-          <li><strong>iPhone:</strong> tap Share on the recipe page, then <em>Copy</em>. Open Recipe Keep, tap Add, then <em>Paste link</em>.</li>
+          <li><strong>Android:</strong> once installed, tap Share on any recipe page and pick <em>Extract</em>. It opens and fetches the recipe.</li>
+          <li><strong>iPhone:</strong> tap Share on the recipe page, then <em>Copy</em>. Open Extract, tap Add, then <em>Paste link</em>.</li>
         </ol>
         ${ios ? `<p class="hint">iPhone keeps home-screen apps' storage separate from Safari, so recipes you save in Safari won't appear in the installed app. Use the installed app.</p>` : ""}
       </section>
@@ -505,7 +505,7 @@ function vSettings() {
         <div class="row"><button class="btn primary" data-act="export">Save a backup</button>
           <label class="btn" for="s-import">Restore from backup</label><input type="file" id="s-import" accept="application/json,.json" hidden></div>
       </section>
-      <p class="hint">Recipe Keep is free and has no ads. Recipes stay on your device unless you share them.</p>
+      <p class="hint">Extract is free and has no ads. Recipes stay on your device unless you share them.</p>
     </div>`;
 }
 
@@ -534,20 +534,20 @@ function copyFrom(el) {
 
 /* ===== Backup ===== */
 async function exportBackup() {
-  const data = { app: "recipe-keep", version: 1, exportedAt: new Date().toISOString(), items: [...state.items.values()] };
-  const name = `recipe-keep-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const data = { app: "extract", version: 1, exportedAt: new Date().toISOString(), items: [...state.items.values()] };
+  const name = `extract-backup-${new Date().toISOString().slice(0, 10)}.json`;
   const file = new File([JSON.stringify(data, null, 1)], name, { type: "application/json" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: "Recipe Keep backup" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+    try { await navigator.share({ files: [file], title: "Extract backup" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
   }
   const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
 }
 async function importBackup(file) {
   let data;
-  try { data = JSON.parse(await file.text()); } catch { return toast("That file isn't a Recipe Keep backup."); }
+  try { data = JSON.parse(await file.text()); } catch { return toast("That file isn't a Extract backup."); }
   const items = Array.isArray(data) ? data : data && Array.isArray(data.items) ? data.items : null;
-  if (!items) return toast("That file isn't a Recipe Keep backup.");
+  if (!items) return toast("That file isn't a Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
     if (!it || !it.id || !["recipe", "book"].includes(it.kind)) continue;
@@ -693,7 +693,7 @@ async function openIncoming() {
     } catch {}
     return go({ name: "message", title: "This link couldn't be opened", body: "It may have been cut off when it was sent. Ask for the recipe again, or have it sent as text." });
   }
-  // Android Share → Recipe Keep, or a link like /?url=...
+  // Android Share → Extract, or a link like /?url=...
   const q = new URLSearchParams(location.search);
   const incoming = q.get("url") || findUrl(q.get("text")) || findUrl(q.get("title"));
   if (incoming) {

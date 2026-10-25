@@ -22,4 +22,4 @@ http.createServer(async (req, res) => {
   try { await stat(file); } catch { file = join(pub, "index.html"); }
   res.setHeader("content-type", types[extname(file)] || "application/octet-stream");
   res.end(await readFile(file));
-}).listen(port, () => console.log("Recipe Keep on http://localhost:" + port));
+}).listen(port, () => console.log("Extract on http://localhost:" + port));
