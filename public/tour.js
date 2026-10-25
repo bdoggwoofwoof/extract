@@ -9,6 +9,7 @@ const I = {
   scale: '<path d="M5 12h14"/><path d="M12 5v14"/><circle cx="12" cy="12" r="9"/>',
   photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-8 8"/>',
   timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/>',
+  cart: '<path d="M3 4h2l2.5 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'
 };
 
@@ -28,7 +29,9 @@ export const TOUR = [
   { id: "photos", added: "2026-10-25", icon: "photo", title: "Recipe photos",
     body: "Recipes now bring their photo along, so your library looks like a cookbook. Add or change a photo in Edit, like a snapshot of your own version." },
   { id: "cook-mode", added: "2026-10-25", icon: "timer", title: "Cook mode and timers",
-    body: "Tap Start cooking for one big step at a time, with that step's ingredients right under it. Swipe or tap Next. Times in a step, like 25 minutes, are buttons: tap one to start a timer that rings when it's done." }
+    body: "Tap Start cooking for one big step at a time, with that step's ingredients right under it. Swipe or tap Next. Times in a step, like 25 minutes, are buttons: tap one to start a timer that rings when it's done." },
+  { id: "grocery", added: "2026-10-25", icon: "cart", title: "Grocery list",
+    body: "On any recipe, tap Add to list and untick what you already have. Amounts match the servings you picked. Add your own items, check things off in the store, and share the list." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";

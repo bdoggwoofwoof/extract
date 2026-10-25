@@ -55,6 +55,9 @@ const state = {
 };
 const recipes = () => [...state.items.values()].filter(i => i.kind === "recipe");
 const books = () => [...state.items.values()].filter(i => i.kind === "book").sort((a, b) => a.name.localeCompare(b.name));
+const grocery = () => state.items.get("grocery") || { id: "grocery", kind: "grocery", items: [] };
+const saveGrocery = items => save({ ...grocery(), items });
+const listCount = () => grocery().items.filter(i => !i.done).length;
 
 /* ===== Storage on this device ===== */
 const DB_NAME = "extract", STORE = "items", LS_KEY = "extract-v1";
@@ -271,11 +274,12 @@ function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; 
 /* ===== Render ===== */
 function render() {
   const v = state.view.name;
-  ["library", "books", "add", "settings"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
+  const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; }
+  ["library", "books", "add", "settings", "list"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
+  const cur = { list: "list", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   document.body.classList.toggle("cooking", v === "cook");
-  const fn = { cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
+  const fn = { list: vList, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v === "add") wireAdd();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -370,6 +374,7 @@ function vRecipe() {
       <div class="actions">
         ${(r.steps || []).some(x => !x.startsWith("## ")) ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">Start cooking</button>` : ""}
         <button class="btn" data-act="edit" data-id="${esc(r.id)}">Edit</button>
+        <button class="btn" data-act="list-pick" data-id="${esc(r.id)}">Add to list</button>
         <button class="btn" data-act="book-menu" aria-expanded="${state.bookMenu}">Books${inBooks.length ? ` · ${inBooks.length}` : ""}</button>
         <button class="btn" data-act="share" data-id="${esc(r.id)}">Share</button>
         <button class="btn danger ghost" data-act="delete-ask" data-id="${esc(r.id)}">Delete</button>
@@ -505,6 +510,45 @@ function wireAdd() {
   const u = $("#x-url");
   if (u) u.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fetchFromLink(u.value); } });
   if (state.pendingUrl && u) { const url = state.pendingUrl; state.pendingUrl = ""; fetchFromLink(url); }
+}
+
+function vList() {
+  const items = grocery().items;
+  const open = items.filter(i => !i.done), got = items.filter(i => i.done);
+  const groups = new Map();
+  open.forEach(i => { const k = i.recipeId || ""; if (!groups.has(k)) groups.set(k, { title: i.recipeTitle || "Other items", id: i.recipeId, items: [] }); groups.get(k).items.push(i); });
+  const row = i => `<label class="check gitem${i.done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}><span>${esc(i.text)}</span></label>`;
+  return `<div class="row"><h1>Grocery list</h1><span class="spacer"></span>${open.length ? `<span class="meta">${open.length} to get</span>` : ""}</div>
+    <form class="row" data-form="list-add" style="margin:18px 0">
+      <input type="text" id="la-text" placeholder="Add an item, e.g. paper towels" aria-label="Add an item" style="flex:1 1 220px;width:auto" autocomplete="off" enterkeyhint="done">
+      <button class="btn primary">Add</button></form>
+    ${!items.length ? `<div class="empty"><strong>Your list is empty</strong><span>Open a recipe and tap Add to list, or type items above.</span></div>` : `
+    <div class="stack">
+      ${[...groups.values()].map(g => `<section><div class="row"><h3>${esc(g.title)}</h3>${g.id && state.items.has(g.id) ? `<button class="btn sm ghost" data-act="open-recipe" data-id="${esc(g.id)}">Open</button>` : ""}</div>
+        <div class="list" style="margin-top:8px">${g.items.map(row).join("")}</div></section>`).join("")}
+      ${got.length ? `<section><div class="row"><h3>In the cart · ${got.length}</h3><span class="spacer"></span><button class="btn sm" data-act="list-clear-got">Clear checked</button></div>
+        <div class="list" style="margin-top:8px">${got.map(row).join("")}</div></section>` : ""}
+      <div class="row">
+        ${navigator.share ? `<button class="btn" data-act="list-share">Share list</button>` : ""}<button class="btn" data-act="list-copy">Copy list</button>
+        <span class="spacer"></span>
+        ${state.confirm === "list" ? `<span class="confirm"><span>Clear the whole list?</span><button class="btn sm danger" data-act="list-clear-yes">Clear</button><button class="btn sm" data-act="confirm-no">Keep</button></span>` : `<button class="btn ghost danger" data-act="list-clear-ask">Clear all</button>`}
+      </div>
+    </div>`}`;
+}
+function listText() {
+  const items = grocery().items.filter(i => !i.done);
+  const by = new Map(); items.forEach(i => { const k = i.recipeTitle || "Other"; by.set(k, [...(by.get(k) || []), i.text]); });
+  return [...by].map(([t, xs]) => `${t}\n${xs.map(x => "☐ " + x).join("\n")}`).join("\n\n");
+}
+function openListPicker(r) {
+  const k = state.cook.id === r.id ? state.cook.scale : 1;
+  const lines = (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = splitQty(l, k); return (q ? q + " " : "") + rest; });
+  modal(`<h2>Add to grocery list</h2>
+    <p class="hint">Untick anything you already have.${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
+    <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
+    <div class="list">${lines.map((l, i) => `<label class="check"><input type="checkbox" class="lp" value="${i}" checked> ${esc(l)}</label>`).join("")}</div>
+    <div class="row"><button class="btn primary" data-act="list-add-picked" data-id="${esc(r.id)}">Add to list</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+  state.pickLines = lines;
 }
 
 function vBooks() {
@@ -648,7 +692,7 @@ async function importBackup(file) {
   if (!items) return toast("That file isn't a Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
-    if (!it || !it.id || !["recipe", "book"].includes(it.kind)) continue;
+    if (!it || !it.id || !["recipe", "book", "grocery"].includes(it.kind)) continue;
     const cur = state.items.get(it.id);
     if (!cur) added++; else if ((it.updatedAt || 0) > (cur.updatedAt || 0)) updated++; else continue;
     state.items.set(it.id, it);
@@ -762,6 +806,21 @@ document.addEventListener("click", async e => {
     case "shared-back": state.view.recipeIdx = null; return render();
     case "save-access": settings.set("access", $("#s-access").value.trim()); toast("Access code saved"); await loadStatus(); return render();
     case "export": return exportBackup();
+    case "list-pick": return openListPicker(state.items.get(id));
+    case "pick-all": document.querySelectorAll(".lp").forEach(c => c.checked = el.dataset.v === "1"); return;
+    case "list-add-picked": {
+      const r = state.items.get(id), have = grocery().items;
+      const picked = [...document.querySelectorAll(".lp:checked")].map(c => state.pickLines[+c.value]);
+      const fresh = picked.filter(t => !have.some(h => !h.done && h.recipeId === r.id && h.text === t)).map(t => ({ id: newId("g"), text: t, recipeId: r.id, recipeTitle: r.title, done: false }));
+      saveGrocery([...have, ...fresh]); closeModal(); render();
+      return toast(fresh.length ? `Added ${fresh.length} item${fresh.length === 1 ? "" : "s"} to your list` : "Those are already on your list");
+    }
+    case "list-check": { const items = grocery().items.map(i => i.id === id ? { ...i, done: el.checked } : i); saveGrocery(items); return render(); }
+    case "list-clear-got": saveGrocery(grocery().items.filter(i => !i.done)); return render();
+    case "list-clear-ask": state.confirm = "list"; return render();
+    case "list-clear-yes": state.confirm = null; saveGrocery([]); return render();
+    case "list-copy": { const t = listText(); navigator.clipboard.writeText(t).then(() => toast("List copied"), () => { modal(`<h2>Your list</h2><textarea id="sh-text" rows="10" readonly>${esc(t)}</textarea><div class="row"><button class="btn" data-act="close-modal">Done</button></div>`); $("#sh-text").select(); }); return; }
+    case "list-share": { try { await navigator.share({ title: "Grocery list", text: listText() }); } catch {} return; }
     case "cook-start": return enterCook(id);
     case "cook-exit": return exitCook();
     case "cook-next": return cookGo(1);
@@ -799,6 +858,7 @@ document.addEventListener("change", e => {
 document.addEventListener("submit", e => {
   e.preventDefault(); const f = e.target.dataset.form;
   if (f === "recipe") return saveRecipeForm();
+  if (f === "list-add") { const t = $("#la-text").value.trim(); if (!t) return; saveGrocery([...grocery().items, { id: newId("g"), text: t, recipeId: "", recipeTitle: "", done: false }]); render(); const i = $("#la-text"); if (i) i.focus(); return; }
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
   if (f === "quick-book") { const n = $("#qb-name").value.trim(); if (!n) return; createBook(n, e.target.dataset.recipe); toast(`Added to ${n}`); return render(); }
   if (f === "edit-book") { const b = state.items.get(e.target.dataset.id); save({ ...b, name: $("#eb-name").value.trim() || b.name, description: $("#eb-desc").value.trim() }); state.view.editing = false; return render(); }

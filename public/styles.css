@@ -222,3 +222,11 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .timer.done .btn{color:#1b1407}
 @keyframes pulse{50%{transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){.timer.done{animation:none}}
+
+/* grocery list */
+.gitem span{overflow-wrap:anywhere}
+.gitem.got span{color:var(--muted);text-decoration:line-through}
+.gitem input{accent-color:var(--herb);transform:scale(1.2)}
+.tabbar .ico{position:relative;display:inline-flex}
+.badge{position:absolute;top:-6px;right:-10px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--saffron);color:#1b1407;font-size:11px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+@media (min-width:701px){.badge{position:static;margin-left:4px}}
