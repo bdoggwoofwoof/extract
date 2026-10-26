@@ -936,9 +936,9 @@ async function exportBackup() {
 }
 async function importBackup(file) {
   let data;
-  try { data = JSON.parse(await file.text()); } catch { return toast("That file isn't a Extract backup."); }
+  try { data = JSON.parse(await file.text()); } catch { return toast("That file isn't an Extract backup."); }
   const items = Array.isArray(data) ? data : data && Array.isArray(data.items) ? data.items : null;
-  if (!items) return toast("That file isn't a Extract backup.");
+  if (!items) return toast("That file isn't an Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
     if (!it || !it.id || !["recipe", "book", "grocery", "planday"].includes(it.kind)) continue;
@@ -952,16 +952,21 @@ async function importBackup(file) {
 }
 
 /* ===== Wake lock ===== */
+async function takeWake() {
+  const lock = await navigator.wakeLock.request("screen");
+  state.wake = lock;
+  lock.addEventListener("release", () => { if (state.wake === lock) { state.wake = null; if (["recipe", "cook"].includes(state.view.name) && !document.querySelector(".scrim")) render(); } });
+}
 async function toggleWake() {
   if (state.wake) { state.wantWake = false; try { await state.wake.release(); } catch {} state.wake = null; render(); return; }
   state.wantWake = true;
-  try { state.wake = await navigator.wakeLock.request("screen"); state.wake.addEventListener("release", () => { state.wake = null; }); }
+  try { await takeWake(); }
   catch { toast("Your phone won't keep the screen on here."); }
   render();
 }
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "visible" && state.wantWake && !state.wake) {
-    try { state.wake = await navigator.wakeLock.request("screen"); } catch {}
+    try { await takeWake(); render(); } catch {}
   }
 });
 
@@ -1205,10 +1210,6 @@ watchTimers(ts => {
   box.querySelectorAll(".timer").forEach((el, i) => { const t = ts[i]; if (t && !t.done) el.querySelector(".tclock").textContent = fmtClock((t.end - now) / 1000); });
 });
 
-/* ===== iPhone home-screen gap =====
-   In a home-screen web app with a see-through status bar, iOS sometimes lays the page out
-   shorter than the screen, so bars pinned to the bottom float above the real edge. Measure the
-   shortfall and let the CSS move those bars down by it. In a browser tab it stays 0. */
 /* ===== Boot ===== */
 async function openIncoming() {
   // A short share link: #s=... (needs this app's sync to be set up)
