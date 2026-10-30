@@ -762,7 +762,8 @@ function listText() {
 }
 
 /* ===== Blogs you follow ===== */
-const SUGGESTED_BLOGS = [["Budget Bytes", "https://www.budgetbytes.com"], ["RecipeTin Eats", "https://www.recipetineats.com"], ["Smitten Kitchen", "https://smittenkitchen.com"], ["Minimalist Baker", "https://minimalistbaker.com"], ["Pinch of Yum", "https://pinchofyum.com"], ["Love and Lemons", "https://www.loveandlemons.com"]];
+// Each checked from the live app on Oct 30, 2026 (some big blogs, like Budget Bytes, turn readers away).
+const SUGGESTED_BLOGS = [["RecipeTin Eats", "https://www.recipetineats.com"], ["Smitten Kitchen", "https://smittenkitchen.com"], ["Minimalist Baker", "https://minimalistbaker.com"], ["Pinch of Yum", "https://pinchofyum.com"], ["Love and Lemons", "https://www.loveandlemons.com"], ["The Woks of Life", "https://thewoksoflife.com"], ["101 Cookbooks", "https://www.101cookbooks.com"]];
 const FEED_KEY = "rk-feedcache";
 function feedCache() { if (state.feedCache) return state.feedCache; try { state.feedCache = JSON.parse(localStorage.getItem(FEED_KEY) || "null"); } catch {} return state.feedCache; }
 function setFeedCache(c) { state.feedCache = c; try { localStorage.setItem(FEED_KEY, JSON.stringify(c)); } catch {} }
@@ -809,7 +810,7 @@ function vFeeds() {
   setTimeout(() => { if (fs.sites.length && items.some(i => i.date > seen)) save({ ...feedStore(), seenAt: Date.now() }); }, 1500);
   return `${libTabs("feeds")}<h1>From blogs</h1><p class="lede">New posts from recipe blogs you follow. Tap Save to keep one.</p>
     <form class="row" data-form="feed-add" style="margin:16px 0" id="feed-add">
-      <input type="url" id="feed-url" placeholder="A blog's address, e.g. budgetbytes.com" aria-label="Blog address" style="flex:1 1 220px;width:auto" autocomplete="off" inputmode="url">
+      <input type="url" id="feed-url" placeholder="A blog's address, e.g. smittenkitchen.com" aria-label="Blog address" style="flex:1 1 220px;width:auto" autocomplete="off" inputmode="url">
       <button class="btn primary">Follow</button></form>
     <span class="status" id="feed-status"></span>
     ${sugg.length ? `<div class="chips" aria-label="Suggested blogs">${sugg.map(([n, u]) => `<button class="chip" data-act="feed-quick" data-url="${esc(u)}">+ ${esc(n)}</button>`).join("")}</div>` : ""}
@@ -1125,7 +1126,7 @@ const LIMITS = [
   ["Photos and messy pages", state.ai ? "Photos and pages without recipe data are read by Claude, which takes up to a minute." : "Reading photos, and pages with no built-in recipe data, uses Claude, which isn't set up yet. Settings shows how."],
   ["Aisles start as a guess", "Aisles come from the ingredient's name until you move an item. A moved item stays moved, but only by its plain name (“onion”), on every list."],
   ["Calendar is a copy", "The calendar file is a snapshot. If you change the plan, add it to the calendar again."],
-  ["Blogs need a feed", "Only blogs that publish a feed can be followed (most recipe blogs do). New posts are checked when you open From blogs, not in the background, and there are no notifications."],
+  ["Blogs need a feed", "Only blogs that publish a feed and let readers in can be followed (most do; a few big ones, like Budget Bytes, don't). New posts are checked when you open From blogs, not in the background, and there are no notifications."],
   ["Amounts that don't match", "Repeats are only added up when the units match (2 tbsp + 1 tbsp). Cups and grams of the same thing stay on one line as “1 cup + 200 g”."],
   ["The pantry is simple", "It knows what you have, not how much, and doesn't change as you cook or by use-by dates."],
   ["Nutrition", "Only shown when the recipe's website lists it. Extract doesn't work it out for recipes you type in."],

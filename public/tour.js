@@ -71,7 +71,7 @@ export const TOUR = [
     tip: "Type a blog's address, or tap one of the suggestions. Tap Save on a post to read it into Extract." },
   { id: "limit-blogs", limit: true, news: false, added: "2026-10-30", view: "feeds", target: "#feed-add",
     title: "Blogs need a feed",
-    tip: "Only blogs that publish a feed can be followed (most recipe blogs do). Posts are checked when you open this tab, not in the background, so there are no notifications." },
+    tip: "Only blogs that publish a feed and let readers in can be followed (most do; a few, like Budget Bytes, don't). Posts are checked when you open this tab, not in the background, so there are no notifications." },
   { id: "cook-mode", added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
     title: "Cook mode and timers",
     tip: "Start cooking shows one big step at a time with its ingredients. Times in a step, like 25 minutes, are buttons that start a timer.",
