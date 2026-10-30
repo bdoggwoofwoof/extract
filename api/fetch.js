@@ -7,12 +7,12 @@ import { platformOf, fetchSocial, recipeLinksIn, PLATFORM_NAME } from "../lib/so
 import { parseRecipeText } from "../public/textparse.js";
 
 // Instagram, TikTok, YouTube: the recipe is in the caption, or on a page the caption links to.
-async function fromSocial(url, res, check) {
+async function fromSocial(url, res) {
   let post;
   try { post = await fetchSocial(url); }
   catch (e) {
     const err = e instanceof FetchError ? e : new FetchError("fetch_failed", "That post couldn't be reached. Try again, or paste its caption.", 502);
-    return send(res, err.status, { error: err.code === "site_blocked" || err.code === "post_missing" ? "site_blocked" : err.code, message: err.message, platform: platformOf(url), detail: check ? e.detail || e.message : undefined });
+    return send(res, err.status, { error: err.code === "site_blocked" || err.code === "post_missing" ? "site_blocked" : err.code, message: err.message, platform: platformOf(url) });
   }
   const name = PLATFORM_NAME[post.platform];
   const extra = r => ({ ...r, image: r.image || post.image, notes: [r.notes, post.author ? `From ${post.author} on ${name}.` : ""].filter(Boolean).join("\n") });
@@ -37,15 +37,12 @@ async function fromSocial(url, res, check) {
   return send(res, 422, { error: "no_recipe_in_post", platform: post.platform, message: `This ${name} post doesn't write the recipe in its ${post.platform === "youtube" ? "description" : "caption"}${post.platform === "youtube" ? "" : ", and doesn't link to one"}. If the creator lists it on their website (often the link in their bio), paste that link instead.` });
 }
 
-export default async function handler(req, res0) {
-  // TEMP: ?check=1 reports the real status in a 200 so it can be inspected; removed after testing.
-  const check = new URL(req.url, "http://x").searchParams.get("check") === "1";
-  const res = check ? { setHeader: (...a) => res0.setHeader(...a), end: b => { res0.statusCode = 200; res0.end(JSON.stringify({ status: res.statusCode, body: JSON.parse(b) })); } } : res0;
+export default async function handler(req, res) {
   if (req.method !== "GET") return send(res, 405, { error: "method", message: "Use GET." });
   if (!checkAccess(req, res)) return;
   const url = new URL(req.url, "http://x").searchParams.get("url");
   if (!url) return send(res, 400, { error: "bad_url", message: "Add a recipe link first." });
-  if (platformOf(url)) return fromSocial(url, res, check);
+  if (platformOf(url)) return fromSocial(url, res);
 
   // 1. The page itself.
   let page = null, firstError = null, archiveNote = "";
