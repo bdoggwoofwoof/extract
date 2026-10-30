@@ -37,7 +37,10 @@ async function fromSocial(url, res) {
   return send(res, 422, { error: "no_recipe_in_post", platform: post.platform, message: `This ${name} post doesn't write the recipe in its ${post.platform === "youtube" ? "description" : "caption"}${post.platform === "youtube" ? "" : ", and doesn't link to one"}. If the creator lists it on their website (often the link in their bio), paste that link instead.` });
 }
 
-export default async function handler(req, res) {
+export default async function handler(req, res0) {
+  // TEMP: ?check=1 reports the real status in a 200 so it can be inspected; removed after testing.
+  const check = new URL(req.url, "http://x").searchParams.get("check") === "1";
+  const res = check ? { setHeader: (...a) => res0.setHeader(...a), end: b => { res0.statusCode = 200; res0.end(JSON.stringify({ status: res.statusCode, body: JSON.parse(b) })); } } : res0;
   if (req.method !== "GET") return send(res, 405, { error: "method", message: "Use GET." });
   if (!checkAccess(req, res)) return;
   const url = new URL(req.url, "http://x").searchParams.get("url");
