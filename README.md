@@ -6,7 +6,11 @@ A free, ad-free recipe app for your phone. Paste or share a link to any recipe p
 - Recipes are stored on your phone and work offline in the kitchen.
 - Most recipe sites work instantly and for free. Extract reads their standard recipe data, and for sites that block readers (like Allrecipes or Serious Eats) it reads the public copy saved by the Internet Archive.
 - **Cook mode:** one big step at a time, with that step's ingredients shown and tappable times that start kitchen timers.
-- **Grocery list** from any recipe, scaled to your servings, plus your own items.
+- **Grocery list** from any recipe, scaled to your servings, sorted by store aisle with repeats added up (or grouped by recipe), plus your own items.
+- **Pantry** of what you have at home: those items start unticked when you shop, and *What can I make?* ranks your recipes by what you already have.
+- **Instagram, TikTok and YouTube** links: the recipe is read from the caption or description, or from the page the caption links to.
+- **Ratings and a cooking log** with a dated note each time you make something.
+- **Help** (the ? button): how-tos, what Extract can't do yet, what's new, and the tour (which includes Limitation steps).
 - **Weekly meal plan** that turns into a grocery list in one tap.
 - **Sync between devices** with your own free Supabase project (optional), plus short share links.
 - **Photos, favorites, a cooked count, US/metric conversion, nutrition facts, printing, read-aloud steps**, importing many links at once, categories, and recipe books.
@@ -36,6 +40,7 @@ Open it from the home-screen icon from then on. On iPhone, the home-screen app k
 - **Android:** on any recipe page, tap **Share → Extract**. The app opens and fetches the recipe.
 - **iPhone:** on the recipe page, tap **Share → Copy**. Open Extract, tap **Add**, then **Paste link**.
 - **Any phone:** you can also type or paste a link into the Link box, or use **Type it in**.
+- **Instagram, TikTok, YouTube:** copy the post's link and paste it on Add. Only the caption or description is read, never the video. Instagram sometimes hides captions from readers; copy the caption and use **Paste text** (works without Claude when it has an ingredient list).
 
 Every recipe opens on a review screen first, so you can fix anything before saving.
 

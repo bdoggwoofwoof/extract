@@ -3,6 +3,8 @@ import { FULL_TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
 import * as sync from "/sync.js";
 import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
+import { itemOf, aisleOf, mergeItems, byAisle, inPantry, canMake, AISLES } from "/grocery.js";
+import { parseRecipeText } from "/textparse.js";
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -82,6 +84,20 @@ function weekStartOf(d, offsetWeeks = 0) {
 const grocery = () => state.items.get("grocery") || { id: "grocery", kind: "grocery", items: [] };
 const saveGrocery = items => save({ ...grocery(), items });
 const listCount = () => grocery().items.filter(i => !i.done).length;
+// Pantry: what's at home. One stored item, like the grocery list.
+const pantry = () => state.items.get("pantry") || { id: "pantry", kind: "pantry", items: [] };
+const savePantry = items => save({ ...pantry(), items });
+function addToPantry(texts) {
+  const cur = pantry().items, add = [];
+  for (const t of texts) {
+    const name = itemOf(t).name || String(t).toLowerCase().trim();
+    if (!name || cur.some(p => p.name === name) || add.some(p => p.name === name)) continue;
+    add.push({ id: newId("pa"), name, added: Date.now() });
+  }
+  if (add.length) savePantry([...cur, ...add]);
+  return add.length;
+}
+const stars = (n, cls = "") => n ? `<span class="stars-sm${cls}" aria-label="${n} out of 5 stars">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>` : "";
 
 /* ===== Storage on this device ===== */
 const DB_NAME = "extract", STORE = "items", LS_KEY = "extract-v1";
@@ -128,7 +144,7 @@ const syncHooks = {
   get: id => state.items.get(id),
   applyRemote: async item => { state.items.set(item.id, item); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.put(JSON.parse(JSON.stringify(item)))).catch(() => {}); },
   applyRemoteDelete: async id => { state.items.delete(id); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.delete(id)).catch(() => {}); },
-  afterPull: () => { if (["library", "books", "book", "recipe", "plan", "list"].includes(state.view.name) && !document.querySelector(".scrim")) render(); }
+  afterPull: () => { if (["library", "books", "book", "recipe", "plan", "list", "pantry"].includes(state.view.name) && !document.querySelector(".scrim")) render(); }
 };
 
 /* ===== Server calls ===== */
@@ -165,7 +181,7 @@ async function unpack(s) {
   if (kind === "z") raw = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
   return JSON.parse(new TextDecoder().decode(raw));
 }
-const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; return o; };
+const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; delete o.rating; delete o.log; return o; };
 async function shareLinkFor(item) {
   const payload = sharePayloadFor(item);
   if (sync.info().signedIn) { try { const id = await sync.createShare(payload); if (id) return location.origin + "/#s=" + id; } catch {} }
@@ -257,10 +273,14 @@ async function fetchFromLink(raw) {
   setStatus('<span class="spin"></span> Fetching the recipe…'); setBusy(true);
   try {
     const j = await api("/api/fetch?url=" + encodeURIComponent(url));
-    openDraft(normalize(j.recipe, j.recipe.source || url), null, j.method === "archive" ? j.archivedAt : "");
+    const pn = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube" }[j.platform] || "";
+    const note = j.method === "social" ? `Read from the ${pn} ${j.platform === "youtube" ? "description" : "caption"}. Captions are often shorthand, so check the amounts and steps.`
+      : j.method === "social-ai" ? `Claude read this from the ${pn} ${j.platform === "youtube" ? "description" : "caption"}. Check it over.`
+      : j.method === "linked" ? `The ${pn} post linked to this recipe page, so it came from there.` : "";
+    openDraft(normalize(j.recipe, j.recipe.source || url), null, j.method === "archive" ? j.archivedAt : "", note);
   } catch (e) {
     setStatus(esc(e.message), true);
-    if (e.error === "site_blocked" || e.error === "no_data" || e.error === "no_recipe") {
+    if (e.error === "site_blocked" || e.error === "no_data" || e.error === "no_recipe" || e.error === "no_recipe_in_post") {
       const s = $("#x-status"); if (s) s.insertAdjacentHTML("beforeend", ` <button class="btn sm" data-act="add-tab" data-t="paste">Paste text instead</button>`);
     }
   } finally { setBusy(false); }
@@ -268,7 +288,11 @@ async function fetchFromLink(raw) {
 async function extractFromText(text, url) {
   const s = tryStructured(text);
   if (s && s.ingredients.length) { openDraft(normalize(s, url || s.source)); return; }
-  if (!state.ai) return setStatus("Reading pasted text needs Claude, which isn't set up yet (see Settings). Use the Link tab, or Type it in.", true);
+  if (!state.ai) {
+    const p = parseRecipeText(text);
+    if (p) { openDraft(normalize(p, url), null, "", "Read from the text you pasted. Check the amounts and steps came through right."); return; }
+    return setStatus("Couldn't find a recipe in that text. It works best when the text has an Ingredients list and numbered steps. You can also Type it in.", true);
+  }
   setStatus('<span class="spin"></span> Reading the recipe…'); setBusy(true);
   try {
     const j = await api("/api/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text.slice(0, 60000), url }) });
@@ -332,17 +356,17 @@ const EXAMPLE = {
 
 /* ===== Navigation ===== */
 function go(view) { state.view = view; state.confirm = null; state.bookMenu = false; state.moreMenu = false; render(); window.scrollTo(0, 0); }
-function openDraft(r, id, archivedAt) { state.draft = { ...r, id: id || null }; state.draftArchived = archivedAt || ""; go({ name: "edit" }); }
+function openDraft(r, id, archivedAt, note) { state.draft = { ...r, id: id || null }; state.draftArchived = archivedAt || ""; state.draftNote = note || ""; go({ name: "edit" }); }
 
 /* ===== Render ===== */
 function render() {
   const v = state.view.name;
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; }
-  ["library", "books", "add", "settings", "list", "plan"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { plan: "plan", list: "list", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
+  ["library", "books", "add", "settings", "list", "plan", "help"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
+  const cur = { plan: "plan", list: "list", pantry: "list", help: "help", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   document.body.classList.toggle("cooking", v === "cook");
-  const fn = { plan: vPlan, list: vList, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
+  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v === "add") wireAdd();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -351,6 +375,7 @@ const tagsOf = r => (r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`
 const timeOf = r => r.totalTime || [r.prepTime, r.cookTime].filter(Boolean).join(" + ");
 function rcard(r, act = "open-recipe") {
   const meta = [timeOf(r), r.servings ? `Serves ${r.servings}` : r.yield, domain(r.source)].filter(Boolean).map(esc);
+  if (r.rating) meta.unshift(stars(r.rating));
   return `<button class="rcard${r.image ? " has-img" : ""}" data-act="${act}" data-id="${esc(r.id)}">${imgTag(r.image, "rimg")}<h2>${r.fav ? `<span class="heart" aria-label="Favorite">♥</span> ` : ""}${esc(r.title)}</h2>
     ${meta.length ? `<div class="meta">${meta.map(x => `<span>${x}</span>`).join("")}</div>` : ""}
     <div class="tags">${tagsOf(r)}</div></button>`;
@@ -368,12 +393,13 @@ function vLibrary() {
   const list = all.filter(r => (!state.fav || r.fav) && (!state.tag || (r.tags || []).includes(state.tag)) &&
     (!q || (r.title + " " + (r.ingredients || []).join(" ") + " " + (r.tags || []).join(" ")).toLowerCase().includes(q)))
     .sort(state.sort === "az" ? (a, b) => a.title.localeCompare(b.title)
+      : state.sort === "rated" ? (a, b) => (b.rating || 0) - (a.rating || 0) || a.title.localeCompare(b.title)
       : state.sort === "cooked" ? (a, b) => ((b.cooked || []).length - (a.cooked || []).length) || ((b.cooked || []).slice(-1)[0] || 0) - ((a.cooked || []).slice(-1)[0] || 0)
       : (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return `<div class="row"><h1>Your recipes</h1><span class="spacer"></span><span class="meta">${all.length} saved</span></div>
     <div class="tools">
       <input type="search" id="q" placeholder="Search titles, ingredients, categories" value="${esc(state.q)}" aria-label="Search recipes">
-      <select id="sort" aria-label="Sort"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option><option value="cooked"${state.sort === "cooked" ? " selected" : ""}>Most cooked</option></select>
+      <select id="sort" aria-label="Sort"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option><option value="cooked"${state.sort === "cooked" ? " selected" : ""}>Most cooked</option><option value="rated"${state.sort === "rated" ? " selected" : ""}>Top rated</option></select>
     </div>
     ${tags.length || favs ? `<div class="chips" role="group" aria-label="Filter recipes">
       <button class="chip" data-act="tag" data-tag="" aria-pressed="${!state.tag && !state.fav}">All</button>
@@ -402,7 +428,7 @@ function nutritionHtml(r) {
     <p class="hint">${n.servingSize ? `Serving: ${esc(n.servingSize)}. ` : ""}As listed by the recipe's site, for the original servings.</p></details>`;
 }
 function resetCook(id) { if (state.cook.id !== id) state.cook = { id, scale: 1, ings: new Set(), steps: new Set() }; }
-function cookBody(r, actions = "") {
+function cookBody(r, actions = "", after = "") {
   const c = state.cook, base = r.servings || null, k = c.scale;
   let i = 0;
   const ings = (r.ingredients || []).map(line => {
@@ -437,7 +463,7 @@ function cookBody(r, actions = "") {
       <section><div class="row"><h3>Ingredients</h3><span class="spacer"></span>${c.ings.size ? `<button class="btn sm ghost" data-act="clear-checks">Uncheck all</button>` : ""}</div><ul class="ings">${ings || `<li class="hint">No ingredients listed.</li>`}</ul></section>
       <section><div class="row"><h3>Method</h3><span class="spacer"></span>${"wakeLock" in navigator ? `<button class="btn sm" data-act="wake" aria-pressed="${!!state.wake}">${state.wake ? "Screen stays on" : "Keep screen on"}</button>` : ""}</div><ol class="steps">${steps || `<li class="hint">No steps listed.</li>`}</ol>
       ${r.notes ? `<h3 style="margin-top:24px">Notes</h3><div class="notes" style="margin-top:10px">${esc(r.notes)}</div>` : ""}
-      ${nutritionHtml(r)}</section>
+      ${nutritionHtml(r)}${after}</section>
     </div>`;
 }
 
@@ -455,7 +481,7 @@ function vRecipe() {
       <button class="mitem" data-act="plan-recipe" data-id="${esc(r.id)}">Add to meal plan</button>
       <button class="mitem" data-act="edit" data-id="${esc(r.id)}">Edit recipe</button>
       <button class="mitem" data-act="book-menu" aria-expanded="${state.bookMenu}">Add to a book${inBooks.length ? ` (in ${inBooks.length})` : ""}</button>
-      <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this today</button>
+      <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this: add to cooking log</button>
       <button class="mitem" data-act="print">Print recipe</button>
       <button class="mitem danger" data-act="delete-ask" data-id="${esc(r.id)}">Delete recipe</button></div>` : "";
   const actions = `<div class="stack" style="gap:10px">
@@ -466,11 +492,16 @@ function vRecipe() {
         <button class="btn" data-act="share" data-id="${esc(r.id)}">Share</button>
         <button class="btn" data-act="more" aria-expanded="${!!state.moreMenu}" aria-label="More actions">More</button>
       </div>
+      <div class="stars" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n => `<button data-act="rate" data-id="${esc(r.id)}" data-v="${n}" aria-pressed="${(r.rating || 0) >= n}" aria-label="${n} star${n === 1 ? "" : "s"}${r.rating === n ? " (tap again to clear)" : ""}">★</button>`).join("")}<span class="hint">${r.rating ? "Your rating" : "Rate it"}</span></div>
       ${more}${menu}${confirm}
       ${inBooks.length || cookedText(r) ? `<p class="hint">${inBooks.length ? `In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}` : ""}${inBooks.length && cookedText(r) ? " · " : ""}${esc(cookedText(r))}</p>` : ""}
     </div>`;
+  const log = [...(r.log || [])].sort((a, b) => b.at - a.at);
+  const logHtml = `<section class="cook-log" id="cook-log"><div class="row"><h3>Cooking log</h3><span class="spacer"></span><button class="btn sm" data-act="cooked" data-id="${esc(r.id)}">+ Add</button></div>
+    ${log.length ? `<ul class="log">${log.map(e => `<li><div class="row"><strong>${esc(new Date(e.at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</strong>${stars(e.rating)}<span class="spacer"></span><button class="btn sm ghost" data-act="log-del" data-id="${esc(r.id)}" data-e="${esc(e.id)}" aria-label="Delete this entry">✕</button></div>${e.note ? `<p>${esc(e.note)}</p>` : ""}</li>`).join("")}</ul>`
+      : `<p class="hint">Each time you make it, jot what you changed or what to try next time.</p>`}</section>`;
   return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">← ${fromBook ? "Back to book" : "All recipes"}</button>
-    ${cookBody(r, actions)}`;
+    ${cookBody(r, actions, logHtml)}`;
 }
 
 function cookSteps(r) {
@@ -567,6 +598,7 @@ function vEdit() {
     <h1>${d.id ? "Edit recipe" : "Check it, then save"}</h1>
     ${d.id ? "" : `<p class="lede">Fix anything that came through wrong. Nothing is saved until you tap Save recipe.</p>`}
     ${!d.id && findBySource(d.source) ? `<div class="notice row" style="margin-top:12px"><span>You already saved this recipe as “${esc(findBySource(d.source).title)}”.</span><span class="spacer"></span><button type="button" class="btn sm" data-act="open-recipe" data-id="${esc(findBySource(d.source).id)}">Open it</button></div>` : ""}
+    ${!d.id && state.draftNote ? `<p class="notice" style="margin-top:12px">${esc(state.draftNote)}</p>` : ""}
     ${!d.id && state.draftArchived ? `<p class="notice" style="margin-top:12px">This site blocks readers, so this came from the Internet Archive's copy saved ${esc(archiveDate(state.draftArchived))}. If the recipe changed since then, check the original.</p>` : ""}
     <form class="stack" data-form="recipe" style="margin-top:20px">
       <div class="field"><label for="f-title">Title</label><input type="text" id="f-title" value="${esc(d.title)}" required></div>
@@ -608,6 +640,7 @@ function vAdd() {
       </div>
       <span id="x-status" class="status"></span>
       <p class="hint">Copy a link from any recipe site, then tap Paste link. Most big recipe sites work instantly.${state.ai ? "" : " Sites without standard recipe data need Claude reading, which you can turn on in Settings."}</p>
+      <p class="hint social-hint" id="social-hint"><span class="plat">Instagram</span><span class="plat">TikTok</span><span class="plat">YouTube</span> Posts work too, when the recipe is written in the caption or description, or the caption links to it.</p>
     </div>`;
   if (t === "many") body = `<div class="stack">
       <p class="hint">Moving your recipes over? Paste a batch of links, one per line, or a whole list copied from notes or another app. Each recipe is saved as it's read; you can edit any of them later.</p>
@@ -616,8 +649,8 @@ function vAdd() {
       <div class="row"><button class="btn primary big" data-act="import-many" data-busy>Import recipes</button></div>
       <ol class="import-log" id="import-log"></ol></div>`;
   if (t === "paste") body = `<div class="stack">
-      <p class="hint">For sites that block the link reader: open the recipe page, select all, copy, and paste it here.${state.ai ? "" : " Reading pasted text needs Claude reading (see Settings)."}</p>
-      <div class="field"><label for="x-text">Page text</label><textarea id="x-text" rows="9" placeholder="Paste the whole page here, life story and all"></textarea></div>
+      <p class="hint">For sites that block the link reader, or a caption you copied: paste the text here. It reads best when there's an Ingredients list and numbered steps.${state.ai ? "" : " A whole page with a life story around the recipe needs Claude reading (see Settings)."}</p>
+      <div class="field"><label for="x-text">Recipe text</label><textarea id="x-text" rows="9" placeholder="Paste the recipe, a caption, or the whole page"></textarea></div>
       <div class="field"><label for="x-src">Link to the page (optional)</label><input type="url" id="x-src" placeholder="https://"></div>
       <div class="row"><button class="btn primary big" data-act="extract-text" data-busy>Get recipe</button></div>
       <span id="x-status" class="status"></span></div>`;
@@ -646,22 +679,35 @@ function wireAdd() {
   if (state.pendingUrl && u) { const url = state.pendingUrl; state.pendingUrl = ""; fetchFromLink(url); }
 }
 
+const listTabs = cur => `<div class="tabs" role="tablist" id="list-tabs"><button role="tab" aria-selected="${cur === "list"}" data-act="nav" data-v="list">Grocery list${listCount() ? ` · ${listCount()}` : ""}</button><button role="tab" aria-selected="${cur === "pantry"}" data-act="nav" data-v="pantry" id="tab-pantry">Pantry${pantry().items.length ? ` · ${pantry().items.length}` : ""}</button></div>`;
+const listMode = () => settings.get("listView") === "recipe" ? "recipe" : "aisle";
 function vList() {
-  const items = grocery().items;
+  const items = grocery().items, mode = listMode();
   const open = items.filter(i => !i.done), got = items.filter(i => i.done);
-  const groups = new Map();
-  open.forEach(i => { const k = i.recipeId || ""; if (!groups.has(k)) groups.set(k, { title: i.recipeTitle || "Other items", id: i.recipeId, items: [] }); groups.get(k).items.push(i); });
-  const row = i => `<label class="check gitem${i.done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-id="${esc(i.id)}" ${i.done ? "checked" : ""}><span>${esc(i.text)}</span></label>`;
-  return `<div class="row"><h1>Grocery list</h1><span class="spacer"></span>${open.length ? `<span class="meta">${open.length} to get</span>` : ""}</div>
-    <form class="row" data-form="list-add" style="margin:18px 0">
+  const row = i => `<label class="check gitem${i.done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(i.id)}" ${i.done ? "checked" : ""}><span>${esc(i.text)}</span></label>`;
+  // By aisle: the same ingredient from several recipes becomes one line with the amounts added up.
+  const mrow = (m, done) => `<label class="check gitem${done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(m.ids.join(","))}" ${done ? "checked" : ""}><span>${esc(m.text)}${m.recipes.length ? `<small class="from">${esc(m.recipes.join(" · "))}</small>` : ""}</span></label>`;
+  let body = "";
+  if (mode === "aisle") {
+    body = byAisle(mergeItems(open)).map(([a, rows]) => `<section><h3 class="aisle-h">${esc(a)} <span class="n">${rows.length}</span></h3><div class="list" style="margin-top:8px">${rows.map(m => mrow(m, false)).join("")}</div></section>`).join("");
+  } else {
+    const groups = new Map();
+    open.forEach(i => { const k = i.recipeId || ""; if (!groups.has(k)) groups.set(k, { title: i.recipeTitle || "Other items", id: i.recipeId, items: [] }); groups.get(k).items.push(i); });
+    body = [...groups.values()].map(g => `<section><div class="row"><h3>${esc(g.title)}</h3>${g.id && state.items.has(g.id) ? `<button class="btn sm ghost" data-act="open-recipe" data-id="${esc(g.id)}">Open</button>` : ""}</div>
+        <div class="list" style="margin-top:8px">${g.items.map(row).join("")}</div></section>`).join("");
+  }
+  const cart = mode === "aisle" ? mergeItems(got).map(m => mrow(m, true)).join("") : got.map(row).join("");
+  return `${listTabs("list")}
+    <div class="row"><h1>Grocery list</h1><span class="spacer"></span>${open.length ? `<span class="meta">${open.length} to get</span>` : ""}</div>
+    <div class="row" style="margin-top:12px"><div class="seg" role="group" aria-label="Group the list" id="list-mode"><button data-act="list-mode" data-v="aisle" aria-pressed="${mode === "aisle"}">By aisle</button><button data-act="list-mode" data-v="recipe" aria-pressed="${mode === "recipe"}">By recipe</button></div></div>
+    <form class="row" data-form="list-add" style="margin:16px 0">
       <input type="text" id="la-text" placeholder="Add an item, e.g. paper towels" aria-label="Add an item" style="flex:1 1 220px;width:auto" autocomplete="off" enterkeyhint="done">
       <button class="btn primary">Add</button></form>
     ${!items.length ? `<div class="empty"><strong>Your list is empty</strong><span>Open a recipe and tap Add to list, or type items above.</span></div>` : `
     <div class="stack">
-      ${[...groups.values()].map(g => `<section><div class="row"><h3>${esc(g.title)}</h3>${g.id && state.items.has(g.id) ? `<button class="btn sm ghost" data-act="open-recipe" data-id="${esc(g.id)}">Open</button>` : ""}</div>
-        <div class="list" style="margin-top:8px">${g.items.map(row).join("")}</div></section>`).join("")}
-      ${got.length ? `<section><div class="row"><h3>In the cart · ${got.length}</h3><span class="spacer"></span><button class="btn sm" data-act="list-clear-got">Clear checked</button></div>
-        <div class="list" style="margin-top:8px">${got.map(row).join("")}</div></section>` : ""}
+      ${body}
+      ${got.length ? `<section><div class="row"><h3>In the cart · ${got.length}</h3><span class="spacer"></span><button class="btn sm" data-act="list-to-pantry">Put in pantry</button><button class="btn sm" data-act="list-clear-got">Clear</button></div>
+        <div class="list" style="margin-top:8px">${cart}</div></section>` : ""}
       <div class="row">
         ${navigator.share ? `<button class="btn" data-act="list-share">Share list</button>` : ""}<button class="btn" data-act="list-copy">Copy list</button>
         <span class="spacer"></span>
@@ -671,16 +717,47 @@ function vList() {
 }
 function listText() {
   const items = grocery().items.filter(i => !i.done);
+  if (listMode() === "aisle") return byAisle(mergeItems(items)).map(([a, rows]) => `${a}\n${rows.map(m => "☐ " + m.text).join("\n")}`).join("\n\n");
   const by = new Map(); items.forEach(i => { const k = i.recipeTitle || "Other"; by.set(k, [...(by.get(k) || []), i.text]); });
   return [...by].map(([t, xs]) => `${t}\n${xs.map(x => "☐ " + x).join("\n")}`).join("\n\n");
 }
+
+/* ===== Pantry ===== */
+const PANTRY_STARTERS = ["Olive oil", "Butter", "Eggs", "Milk", "All-purpose flour", "Sugar", "Rice", "Pasta", "Onions", "Garlic", "Chicken broth", "Canned tomatoes", "Soy sauce", "Cumin", "Paprika", "Honey", "Lemons", "Parmesan"];
+function vPantry() {
+  const items = pantry().items;
+  const groups = byAisle(items.map(p => ({ ...p, aisle: aisleOf(p.name) })));
+  const have = new Set(items.map(p => p.name));
+  const starters = PANTRY_STARTERS.filter(t => !have.has(itemOf(t).name)).slice(0, 12);
+  const ranked = recipes().map(r => ({ r, m: canMake(r, items) })).filter(x => x.m.total > 0 && x.m.have > 0)
+    .sort((a, b) => a.m.missing.length - b.m.missing.length || b.m.have / b.m.total - a.m.have / a.m.total).slice(0, 12);
+  return `${listTabs("pantry")}
+    <h1>Pantry</h1><p class="lede">What you have at home. Extract skips these when you add a recipe to your list, and shows what you can make.</p>
+    <form class="row" data-form="pantry-add" style="margin:16px 0" id="pantry-add">
+      <input type="text" id="pa-text" placeholder="Add what you have, e.g. rice, eggs, garlic" aria-label="Add to pantry" style="flex:1 1 220px;width:auto" autocomplete="off" enterkeyhint="done">
+      <button class="btn primary">Add</button></form>
+    ${starters.length ? `<div class="chips" aria-label="Quick add">${starters.map(t => `<button class="chip" data-act="pantry-quick" data-t="${esc(t)}">+ ${esc(t)}</button>`).join("")}</div>` : ""}
+    <section class="stack" id="can-make" style="margin-top:22px"><h2>What can I make?</h2>
+      ${!recipes().length ? `<p class="hint">Save some recipes first.</p>` : !items.length ? `<p class="hint">Add what's in your kitchen above, and the recipes you can make with it show up here.</p>`
+        : ranked.length ? `<div class="list">${ranked.map(({ r, m }) => `<div class="li make"><button class="t" data-act="open-recipe" data-id="${esc(r.id)}"><strong>${esc(r.title)}</strong>
+            <span class="meta">${m.missing.length ? `You have ${m.have} of ${m.total} · need ${esc(m.missing.slice(0, 4).map(x => x.name).join(", "))}${m.missing.length > 4 ? ` and ${m.missing.length - 4} more` : ""}` : `You have everything`}</span></button>
+            ${m.missing.length ? `<button class="btn sm" data-act="pantry-missing" data-id="${esc(r.id)}">Add ${m.missing.length} to list</button>` : `<span class="ready">Ready</span>`}</div>`).join("")}</div>`
+        : `<p class="hint">None of your recipes use what's in your pantry yet.</p>`}
+    </section>
+    <section class="stack" style="margin-top:22px"><h2>In your pantry${items.length ? ` · ${items.length}` : ""}</h2>
+      ${items.length ? groups.map(([a, ps]) => `<div><h3 class="aisle-h">${esc(a)}</h3><div class="list" style="margin-top:6px">${ps.map(p => `<div class="li"><span class="t">${esc(p.name)}</span><button class="btn sm ghost" data-act="pantry-remove" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">Used up</button></div>`).join("")}</div></div>`).join("")
+        : `<div class="empty"><strong>Nothing here yet</strong><span>Type what you have, or tap the quick-add buttons. In the store, check items off your list, then tap Put in pantry.</span></div>`}
+    </section>`;
+}
+
 function openListPicker(r) {
   const k = state.cook.id === r.id ? state.cook.scale : 1;
   const lines = (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, k); return (q ? q + " " : "") + rest; });
+  const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
   modal(`<h2>Add to grocery list</h2>
-    <p class="hint">Untick anything you already have.${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
+    <p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
     <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
-    <div class="list">${lines.map((l, i) => `<label class="check"><input type="checkbox" class="lp" value="${i}" checked> ${esc(l)}</label>`).join("")}</div>
+    <div class="list">${lines.map((l, i) => `<label class="check"><input type="checkbox" class="lp" value="${i}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div>
     <div class="row"><button class="btn primary" data-act="list-add-picked" data-id="${esc(r.id)}">Add to list</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
   state.pickLines = lines;
 }
@@ -747,9 +824,10 @@ function planWeekToList() {
   const rs = [...new Set(ids)].map(id => state.items.get(id));
   const groups = rs.map(r => ({ r, lines: (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, 1); return (q ? q + " " : "") + rest; }) }));
   state.weekPick = groups;
-  modal(`<h2>Groceries for the week</h2><p class="hint">Untick anything you already have.</p>
+  const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
+  modal(`<h2>Groceries for the week</h2><p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}</p>
     <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
-    <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" checked> ${esc(l)}</label>`).join("")}</div></section>`).join("")}</div>
+    <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div></section>`).join("")}</div>
     <div class="row"><button class="btn primary" data-act="week-add-picked">Add to list</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
 }
 
@@ -794,6 +872,39 @@ function vShared() {
   if (p.kind === "recipe") { resetCook("shared"); return banner + cookBody(p.recipe); }
   return banner + `<h1>${esc(p.book.name)}</h1>${p.book.description ? `<p class="lede">${esc(p.book.description)}</p>` : ""}
     <div class="cards">${p.recipes.map((r, i) => rcard({ ...r, id: String(i) }, "shared-open")).join("")}</div>`;
+}
+/* ===== Help ===== */
+const HELP = [
+  ["Save a recipe from a website", "Tap Add, paste the link, and tap Get recipe. Check it over, then Save recipe. Sites that turn readers away (like Allrecipes) are read from the Internet Archive's saved copy."],
+  ["Save from Instagram, TikTok or YouTube", "Copy the post's link (Share → Copy link) and paste it on Add. Extract reads the caption or description. If the caption only says “recipe in bio”, open the creator's website and paste that link instead."],
+  ["Save from my phone's Share button", "Android: once Extract is installed, tap Share on any recipe page and pick Extract. iPhone: Share → Copy, then open Extract → Add → Paste link."],
+  ["Cook with it", "Open a recipe and tap Start cooking for one big step at a time. Times like “25 minutes” are buttons that start a timer. Read steps aloud reads each step to you. Finish to add it to your cooking log."],
+  ["Rate a recipe and keep notes", "Tap the stars under a recipe's buttons. Each time you make it, More → I made this (or finishing cook mode) adds a dated note to its Cooking log. Sort your recipes by Top rated."],
+  ["Shop by aisle", "List groups everything by store aisle and adds up repeats, like 1 onion + 2 onions = 3 onions. Tap By recipe to see it per recipe instead. Share or copy the list for someone else."],
+  ["Use the pantry", "List → Pantry. Add what you have at home. Those items start unticked when you add a recipe to your list, and What can I make? ranks your recipes by how much you already have. After shopping, check things off and tap Put in pantry."],
+  ["Plan the week", "Plan → + Add on a day, pick a recipe or write a note. Add this week to grocery list shops for all of it at once."],
+  ["Share a recipe or a book", "Tap Share. The link holds a copy of the recipe, so anyone can open and save it without an account."],
+  ["Keep recipes safe", "Recipes are saved on this phone. Settings → Save a backup now and then, or turn on sync to keep them on your other devices too."]
+];
+const LIMITS = [
+  ["iPhone Share menu", "iPhone doesn't let web apps appear in Safari's Share menu, so on iPhone you copy the link and tap Paste link. Android is fine."],
+  ["Videos", "Extract reads a post's caption or description, never the video. If the creator only says the recipe out loud, there's nothing to read. Instagram sometimes hides captions from readers; paste the caption instead."],
+  ["Photos and messy pages", state.ai ? "Photos and pages without recipe data are read by Claude, which takes up to a minute." : "Reading photos, and pages with no built-in recipe data, uses Claude, which isn't set up yet. Settings shows how."],
+  ["Aisles are a best guess", "Aisles come from the ingredient's name. You can't move an item to another aisle yet, and store layouts differ."],
+  ["Amounts that don't match", "Repeats are only added up when the units match (2 tbsp + 1 tbsp). Cups and grams of the same thing stay on one line as “1 cup + 200 g”."],
+  ["The pantry is simple", "It knows what you have, not how much, and doesn't change as you cook or by use-by dates."],
+  ["Nutrition", "Only shown when the recipe's website lists it. Extract doesn't work it out for recipes you type in."],
+  ["Your data", sync.info().signedIn ? "Sync is on, so your recipes are also kept in your Supabase account." : "Without sync, everything lives only on this phone. Removing Extract from the home screen deletes it, so save a backup first."],
+  ["Native-app features", "As a home-screen web app, Extract can't use Apple Watch, Siri, the Reminders app, or kitchen scales."]
+];
+function vHelp() {
+  return `<h1>Help</h1>
+    <div class="stack" style="margin-top:18px">
+      <section class="panel stack"><h2>Tour</h2><p class="hint">A quick walk around the app, pointing at the real buttons. Nothing you do in it is saved.</p><div><button class="btn primary" data-act="tour" id="help-tour">Take the tour</button></div></section>
+      <section class="panel stack"><h2>How do I…</h2><div class="faq">${HELP.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("")}</div></section>
+      <section class="panel stack" id="limits"><h2>What Extract can't do (yet)</h2><ul class="limits">${LIMITS.map(([t, d]) => `<li><strong>${esc(t)}</strong><span>${esc(d)}</span></li>`).join("")}</ul></section>
+      <section class="panel stack"><h2>What's new</h2>${whatsNewHtml()}</section>
+    </div>`;
 }
 function vMessage() { return `<div class="empty"><strong>${esc(state.view.title)}</strong><span>${esc(state.view.body)}</span><button class="btn" data-act="nav" data-v="library">Go to my recipes</button></div>`; }
 
@@ -867,8 +978,8 @@ function vSettings() {
         <div class="row"><span>Weeks start on</span><div class="seg" role="group" aria-label="Week starts on">
           <button data-act="week-start" data-v="sun" aria-pressed="${settings.get("weekStart") !== "mon"}">Sunday</button><button data-act="week-start" data-v="mon" aria-pressed="${settings.get("weekStart") === "mon"}">Monday</button></div></div>
       </section>
-      <section class="panel stack"><h2>What's new</h2>
-        <div><button class="btn" data-act="tour">Take the tour</button></div>
+      <section class="panel stack"><h2>Help and what's new</h2>
+        <div class="row"><button class="btn" data-act="nav" data-v="help">Open Help</button><button class="btn" data-act="tour">Take the tour</button></div>
         ${whatsNewHtml()}
       </section>
       <section class="panel stack"><h2>Backup</h2>
@@ -901,6 +1012,27 @@ function modal(html) { $("#modal-root").innerHTML = `<div class="scrim" data-act
 function closeModal() { $("#modal-root").innerHTML = ""; }
 function copyFrom(el) {
   navigator.clipboard.writeText(el.value).then(() => toast("Copied"), () => { el.focus(); el.select(); toast("Text selected. Use Copy from the menu."); });
+}
+
+/* ===== Cooking log ===== */
+// fromCook: they just finished cook mode, so Skip still counts it as cooked.
+function openCookLog(id, fromCook) {
+  const r = state.items.get(id); if (!r) return;
+  state.logCtx = { id, count: fromCook, rating: r.rating || 0 };
+  const today = dayKey(new Date());
+  modal(`<h2>${fromCook ? "Enjoy your meal! How did it go?" : `Log “${esc(r.title)}”`}</h2>
+    <div class="field"><label>Your rating</label><div class="stars big" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="log-stars" data-v="${n}" aria-pressed="${(r.rating || 0) >= n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}</div></div>
+    <div class="field"><label for="log-date">Made on</label><input type="date" id="log-date" value="${today}" max="${today}"></div>
+    <div class="field"><label for="log-note">Notes for next time</label><textarea id="log-note" rows="3" placeholder="Doubled the garlic. Needed 5 more minutes. Kids loved it."></textarea></div>
+    <div class="row"><button class="btn primary" data-act="log-save">Save</button><button class="btn" data-act="${fromCook ? "log-skip" : "close-modal"}">${fromCook ? "Skip" : "Cancel"}</button></div>`);
+}
+function saveCookLog() {
+  const c = state.logCtx, r = state.items.get(c.id); if (!r) return closeModal();
+  const d = $("#log-date").value, note = $("#log-note").value.trim().slice(0, 1000);
+  const at = d ? new Date(d + "T12:00:00").getTime() : Date.now();
+  const entry = { id: newId("l"), at: d === dayKey(new Date()) ? Date.now() : at, note, rating: c.rating || 0 };
+  save({ ...r, rating: c.rating || r.rating || 0, cooked: [...(r.cooked || []), entry.at].sort((a, b) => a - b).slice(-100), log: [...(r.log || []), entry].slice(-200) });
+  closeModal(); render(); toast("Added to your cooking log");
 }
 
 /* ===== Your own photos ===== */
@@ -941,7 +1073,7 @@ async function importBackup(file) {
   if (!items) return toast("That file isn't an Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
-    if (!it || !it.id || !["recipe", "book", "grocery", "planday"].includes(it.kind)) continue;
+    if (!it || !it.id || !["recipe", "book", "grocery", "planday", "pantry"].includes(it.kind)) continue;
     const cur = state.items.get(it.id);
     if (!cur) added++; else if ((it.updatedAt || 0) > (cur.updatedAt || 0)) updated++; else continue;
     state.items.set(it.id, it);
@@ -1022,7 +1154,7 @@ document.addEventListener("click", async e => {
     case "tag": state.tag = el.dataset.tag; if (!el.dataset.tag) state.fav = false; state.focusQ = false; return render();
     case "fav-filter": state.fav = !state.fav; state.focusQ = false; return render();
     case "fav": { const r = state.items.get(id); save({ ...r, fav: !r.fav }); toast(r.fav ? "Removed from favorites" : "Added to favorites"); return render(); }
-    case "cooked": { const r = state.items.get(id); save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); toast("Marked as cooked today"); return render(); }
+    case "cooked": state.moreMenu = false; render(); return openCookLog(id, false);
     case "example": { const r = { ...JSON.parse(JSON.stringify(EXAMPLE)), kind: "recipe", id: newId("r") }; save(r); return go({ name: "recipe", id: r.id }); }
     case "ing": { const i = +el.dataset.i; state.cook.ings.has(i) ? state.cook.ings.delete(i) : state.cook.ings.add(i); el.closest("li").classList.toggle("done", el.checked); return; }
     case "step": { const i = +el.dataset.i; state.cook.steps.has(i) ? state.cook.steps.delete(i) : state.cook.steps.add(i); el.classList.toggle("done"); el.setAttribute("aria-pressed", state.cook.steps.has(i)); return; }
@@ -1116,11 +1248,27 @@ document.addEventListener("click", async e => {
     }
     case "list-check": {
       // Cross it off where it is; re-sort after a pause so the list doesn't jump under your thumb.
-      const items = grocery().items.map(i => i.id === id ? { ...i, done: el.checked } : i); saveGrocery(items);
+      const ids = new Set(String(el.dataset.ids || id).split(","));
+      const items = grocery().items.map(i => ids.has(i.id) ? { ...i, done: el.checked } : i); saveGrocery(items);
       el.closest(".gitem").classList.toggle("got", el.checked);
       clearTimeout(state.listTimer); state.listTimer = setTimeout(() => { if (state.view.name === "list") render(); }, 1600);
       return;
     }
+    case "list-mode": settings.set("listView", el.dataset.v === "recipe" ? "recipe" : ""); return render();
+    case "list-to-pantry": { const got = grocery().items.filter(i => i.done); const n = addToPantry(got.map(i => i.text)); saveGrocery(grocery().items.filter(i => !i.done)); render(); return toast(n ? `Put ${n} item${n === 1 ? "" : "s"} in your pantry` : "Those are already in your pantry"); }
+    case "pantry-quick": { addToPantry([el.dataset.t]); return render(); }
+    case "pantry-remove": savePantry(pantry().items.filter(p => p.id !== id)); return render();
+    case "pantry-missing": {
+      const r = state.items.get(id), m = canMake(r, pantry().items), have = grocery().items;
+      const fresh = m.missing.map(x => x.line).filter(t => !have.some(h => !h.done && h.recipeId === r.id && h.text === t)).map(t => ({ id: newId("g"), text: t, recipeId: r.id, recipeTitle: r.title, done: false }));
+      saveGrocery([...have, ...fresh]); render();
+      return toast(fresh.length ? `Added ${fresh.length} item${fresh.length === 1 ? "" : "s"} to your list` : "Those are already on your list");
+    }
+    case "rate": { const r = state.items.get(id), v = +el.dataset.v; save({ ...r, rating: r.rating === v ? 0 : v }); return render(); }
+    case "log-stars": { const v = +el.dataset.v; state.logCtx.rating = state.logCtx.rating === v ? 0 : v; document.querySelectorAll("[data-act=log-stars]").forEach(b => b.setAttribute("aria-pressed", +b.dataset.v <= state.logCtx.rating)); return; }
+    case "log-skip": { const c = state.logCtx; closeModal(); if (c && c.count) { const r = state.items.get(c.id); save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); render(); toast("Marked as cooked"); } return; }
+    case "log-save": return saveCookLog();
+    case "log-del": { const r = state.items.get(id); save({ ...r, log: (r.log || []).filter(e => e.id !== el.dataset.e) }); return render(); }
     case "list-clear-got": saveGrocery(grocery().items.filter(i => !i.done)); return render();
     case "list-clear-ask": state.confirm = "list"; return render();
     case "list-clear-yes": state.confirm = null; saveGrocery([]); return render();
@@ -1131,7 +1279,7 @@ document.addEventListener("click", async e => {
     case "cook-next": return cookGo(1);
     case "cook-prev": return cookGo(-1);
     case "cook-ings": state.view.showAll = !state.view.showAll; return render();
-    case "cook-finish": { const r = state.items.get(state.view.id); if (r) save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); exitCook(); return toast("Enjoy your meal! Marked as cooked."); }
+    case "cook-finish": { const rid = state.view.id; exitCook(); return openCookLog(rid, true); }
     case "timer-start": { e.stopPropagation(); const secs = +el.dataset.secs; startTimer(el.dataset.label || "Timer", secs); toast(`Timer set for ${fmtClock(secs)}`); return; }
     case "timer-stop": return stopTimer(el.dataset.id);
     case "timer-add": return addTime(el.dataset.id, 60);
@@ -1172,6 +1320,7 @@ document.addEventListener("submit", e => {
     return;
   }
   if (f === "pp-note") { const t = $("#pp-note").value.trim(); if (!t) return; addPlanEntry(state.planPick.day, { note: t.slice(0, 80) }); toast("Note added"); if (state.view.name === "plan") render(); return drawPlanPicker(); }
+  if (f === "pantry-add") { const t = $("#pa-text").value.trim(); if (!t) return; const n = addToPantry(t.split(/,|\n/).map(x => x.trim()).filter(Boolean)); render(); const i = $("#pa-text"); if (i) i.focus(); if (!n) toast("Already in your pantry"); return; }
   if (f === "list-add") { const t = $("#la-text").value.trim(); if (!t) return; saveGrocery([...grocery().items, { id: newId("g"), text: t, recipeId: "", recipeTitle: "", done: false }]); render(); const i = $("#la-text"); if (i) i.focus(); return; }
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
   if (f === "quick-book") { const n = $("#qb-name").value.trim(); if (!n) return; createBook(n, e.target.dataset.recipe); toast(`Added to ${n}`); return render(); }
@@ -1183,7 +1332,7 @@ const TOUR_DEMO = "__tour-demo";
 const tourHooks = {
   async show(step) {
     closeModal();
-    const needsRecipe = step.view === "recipe" || step.view === "library";
+    const needsRecipe = step.view === "recipe" || step.view === "library" || step.view === "pantry";
     if (needsRecipe && !recipes().length) state.items.set(TOUR_DEMO, { ...JSON.parse(JSON.stringify(EXAMPLE)), id: TOUR_DEMO, kind: "recipe", title: "Red Lentil Soup (example)", updatedAt: Date.now() });
     if (step.view === "add") { state.addTab = step.tab || "link"; if (state.view.name !== "add" || $(".tabs [aria-selected=true]")?.dataset.t !== state.addTab) go({ name: "add" }); }
     else if (step.view === "recipe") {

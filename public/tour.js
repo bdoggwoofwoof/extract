@@ -6,7 +6,9 @@
      target  CSS selector of the thing to spotlight (no target = centered card)
      tab     for the Add screen: which tab to open first
      tip     the callout text, written for pointing ("Paste a link here")
-     body    the same news for the What's new list in Settings, which has no pointing */
+     body    the same news for the What's new list in Settings, which has no pointing
+     limit   true marks a "Limitation" step: something Extract can't do, said plainly
+     news    false keeps a step out of What's new (it still runs in the full tour) */
 
 export const TOUR = [
   { id: "welcome", added: "2026-10-25", view: "add", tab: "link", target: "#x-url",
@@ -17,6 +19,13 @@ export const TOUR = [
     title: "Blocked sites work too",
     tip: "Some big sites, like Allrecipes, turn readers away. Get recipe then reads the copy saved by the Internet Archive instead.",
     body: "Some big sites, like Allrecipes and Serious Eats, turn readers away. Extract now reads the public copy saved by the Internet Archive instead, so those links work too." },
+  { id: "social-import", added: "2026-10-30", view: "add", tab: "link", target: "#social-hint",
+    title: "Instagram, TikTok and YouTube",
+    tip: "Paste a link to a post or video here too. Extract reads the recipe from the caption or description, or follows the caption's link to the recipe page.",
+    body: "Paste an Instagram, TikTok or YouTube link on Add. Extract reads the recipe written in the caption or description, or follows the link the creator put there. Pasted text, like a caption you copied, now works without Claude too." },
+  { id: "limit-video", limit: true, news: false, added: "2026-10-30", view: "add", tab: "link", target: "#social-hint",
+    title: "It reads captions, not videos",
+    tip: "If the creator only says the recipe out loud, there's nothing to read. Instagram sometimes hides captions; copy the caption and use Paste text instead." },
   { id: "bulk-import", added: "2026-10-25", view: "add", tab: "link", target: "[data-act=add-tab][data-t=many]",
     title: "Import many at once",
     tip: "Moving from another app? Many links takes a whole batch pasted together and saves each recipe.",
@@ -25,6 +34,12 @@ export const TOUR = [
     title: "Save from anywhere",
     tip: "Android: on any recipe page, tap Share and pick Extract. iPhone: copy the link, then come here and tap Paste link.",
     body: "On Android, tap Share on a recipe page and pick Extract. On iPhone, copy the link, open Extract, and tap Paste link." },
+  { id: "limit-iphone-share", limit: true, news: false, added: "2026-10-30", view: "add", tab: "link", target: "#nav-add",
+    title: "No Share menu on iPhone",
+    tip: "iPhone doesn't let home-screen web apps appear in Safari's Share menu. Copy the link and tap Paste link instead. Android is fine." },
+  { id: "limit-photo", limit: true, news: false, added: "2026-10-30", view: "add", tab: "link", target: "[data-act=add-tab][data-t=photo]",
+    title: "Photos need Claude",
+    tip: "Reading a photo of a recipe card, or a page with no built-in recipe data, uses Claude, which needs a key added in Vercel. Without one, the Photo tab stays off (Settings shows how)." },
   { id: "organize", added: "2026-10-25", view: "library", target: ".chips",
     title: "Find recipes by category",
     tip: "Every category you give a recipe shows up here. Tap one to filter, or search above.",
@@ -53,6 +68,14 @@ export const TOUR = [
     title: "Favorites",
     tip: "Tap the heart to favorite a recipe, then filter your library to just those. Finishing cook mode counts how often you've made it.",
     body: "Tap ♡ to favorite a recipe, then filter your library to just those. Finishing cook mode, or tapping I made this today, keeps count, so you can sort by Most cooked. Saving a link you already have now tells you." },
+  { id: "ratings", added: "2026-10-30", view: "recipe", target: ".stars",
+    title: "Rate your recipes",
+    tip: "Tap a star to rate this recipe; tap it again to clear. Ratings show on your recipe cards, and you can sort by Top rated.",
+    body: "Tap the stars on any recipe to rate it. Stars show on your recipe cards, and Recipes can be sorted by Top rated." },
+  { id: "cook-log", added: "2026-10-30", view: "recipe", target: "#cook-log",
+    title: "Cooking log",
+    tip: "Each time you make it, add a dated note: what you changed, what to try next time. Finishing cook mode asks too.",
+    body: "Every recipe has a Cooking log. Finish cook mode, or tap + Add, to note the date, a rating, and what you changed or want to try next time." },
   { id: "grocery", added: "2026-10-25", view: "recipe", target: "[data-act=list-pick]",
     title: "Grocery list",
     tip: "Add to list puts this recipe's ingredients on your list, scaled to your servings. Untick what you already have.",
@@ -71,9 +94,27 @@ export const TOUR = [
     body: "The Plan tab shows your week. Tap + Add on a day to pick a recipe for breakfast, lunch or dinner, or jot a note like Leftovers. Then tap Add this week to grocery list to shop for all of it at once." },
   { id: "grocery-tab", news: false, added: "2026-10-25", view: "plan", target: "#nav-list",
     title: "Your list, ready in the store",
-    tip: "The List tab holds everything you've added, grouped by recipe. The number shows what's left to get.",
-    body: "The List tab keeps your grocery list, grouped by recipe, with your own items too. Check things off as you shop." },
-  { id: "books", news: false, added: "2026-10-25", view: "plan", target: "#nav-books",
+    tip: "The List tab holds everything you've added. The number shows what's left to get.",
+    body: "The List tab keeps your grocery list, with your own items too. Check things off as you shop." },
+  { id: "aisles", added: "2026-10-30", view: "list", target: "#list-mode",
+    title: "Shop by aisle",
+    tip: "Your list is sorted by store aisle, and repeats are added up: 1 onion and 2 onions become 3 onions. Tap By recipe to see it per recipe.",
+    body: "The grocery list now sorts itself by store aisle, and adds up the same ingredient from different recipes into one line. Tap By recipe to switch back." },
+  { id: "limit-aisles", limit: true, news: false, added: "2026-10-30", view: "list", target: "#list-mode",
+    title: "Aisles are a best guess",
+    tip: "Aisles come from each ingredient's name, and you can't move an item yet. Amounts only add up when the units match: 1 cup + 200 g stays as both." },
+  { id: "pantry", added: "2026-10-30", view: "pantry", target: "#pantry-add",
+    title: "Your pantry",
+    tip: "Add what's in your kitchen. Those items start unticked when you add a recipe to your list. After shopping, Put in pantry moves checked items here.",
+    body: "List → Pantry keeps what you have at home. Those items start unticked when you add a recipe to your list, and checked-off groceries can go straight into it." },
+  { id: "can-make", added: "2026-10-30", view: "pantry", target: "#can-make",
+    title: "What can I make?",
+    tip: "Your recipes, ranked by how much of each you already have, with what's missing. One tap adds the missing items to your list.",
+    body: "Under Pantry, What can I make? ranks your recipes by how many ingredients you already have, and adds the missing ones to your list in one tap." },
+  { id: "limit-pantry", limit: true, news: false, added: "2026-10-30", view: "pantry", target: "#tab-pantry",
+    title: "The pantry is simple",
+    tip: "It knows what you have, not how much, and doesn't change as you cook. Salt, pepper and water always count as on hand." },
+  { id: "books", news: false, added: "2026-10-25", view: "pantry", target: "#nav-books",
     title: "Recipe books",
     tip: "Books group recipes for a holiday, a person, or a week of dinners. A recipe can be in as many books as you like.",
     body: "Group recipes into books for a holiday, a person, or a week of meals, and share a whole book at once." },
@@ -81,6 +122,9 @@ export const TOUR = [
     title: "Sync between devices",
     tip: "Once sync is set up, sign in here with your email to keep everything the same on your phone and computer.",
     body: "In Settings, sign in with your email and a 6-digit code to keep recipes, books, your meal plan and grocery list in step on your phone and computer. While you're signed in, share links are short." },
+  { id: "limit-storage", limit: true, news: false, added: "2026-10-30", view: "settings", target: "[data-act=export]",
+    title: "Recipes live on this phone",
+    tip: "Without sync, removing Extract from your home screen deletes your recipes. Save a backup here now and then." },
   { id: "theme", added: "2026-10-25", view: "settings", target: "#theme-seg",
     title: "Light or dark",
     tip: "Extract follows your phone's light or dark mode. Pick Light or Dark here to keep it one way.",
@@ -93,9 +137,16 @@ export const TOUR = [
     title: "The tour now shows you around",
     tip: "The tour now opens each screen and points at the real buttons. Take it any time from here.",
     body: "The tour now opens each screen and points at the real buttons, instead of just describing them. Take it from Settings any time." },
+  { id: "limit-native", limit: true, news: false, added: "2026-10-30", view: "settings",
+    title: "Not a native app",
+    tip: "As a home-screen web app, Extract can't use Apple Watch, Siri, the Reminders app, or kitchen scales." },
+  { id: "help", added: "2026-10-30", view: "help", target: "#nav-help",
+    title: "Help is up here",
+    tip: "Help has how-tos, everything Extract can't do yet, what's new, and this tour.",
+    body: "The new ? button at the top opens Help: how-tos, a list of what Extract can't do yet, what's new, and the tour." },
   { id: "settings-gear", news: false, added: "2026-10-25", view: "settings", target: "#nav-settings",
     title: "That's the tour",
-    tip: "Settings is always up here: backups, sync, appearance, and Take the tour if you want this again.",
+    tip: "Settings is next to it: backups, sync and appearance. Take the tour again any time from Help.",
     body: "Settings has backups, sync, appearance, and the tour." }
 ];
 
@@ -138,8 +189,9 @@ async function show() {
 function drawCard() {
   const s = steps[at], last = at === steps.length - 1;
   const card = root.querySelector(".coach-card");
+  card.classList.toggle("limit", !!s.limit);
   card.innerHTML = `
-    <div class="tour-eyebrow">${esc(heading)}${steps.length > 1 ? ` · ${at + 1} of ${steps.length}` : ""}</div>
+    <div class="tour-eyebrow">${s.limit ? `<span class="lim">Limitation</span> · ` : ""}${esc(heading)}${steps.length > 1 ? ` · ${at + 1} of ${steps.length}` : ""}</div>
     <h2 id="coach-title">${esc(s.title)}</h2>
     <p>${esc(s.tip || s.body)}</p>
     ${steps.length > 1 ? `<div class="coach-progress" aria-hidden="true"><span style="width:${((at + 1) / steps.length) * 100}%"></span></div>` : ""}

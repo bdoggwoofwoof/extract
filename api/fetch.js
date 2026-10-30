@@ -3,12 +3,46 @@ import { fetchPage, fetchArchived, looksLikeBotWall, FetchError } from "../lib/n
 import { extractJsonLd, htmlToText, normalize, pageTitle } from "../lib/recipe.js";
 import { aiEnabled, claudeExtract } from "../lib/claude.js";
 import { send, checkAccess } from "../lib/http.js";
+import { platformOf, fetchSocial, recipeLinksIn, PLATFORM_NAME } from "../lib/social.js";
+import { parseRecipeText } from "../public/textparse.js";
+
+// Instagram, TikTok, YouTube: the recipe is in the caption, or on a page the caption links to.
+async function fromSocial(url, res) {
+  let post;
+  try { post = await fetchSocial(url); }
+  catch (e) {
+    const err = e instanceof FetchError ? e : new FetchError("fetch_failed", "That post couldn't be reached. Try again, or paste its caption.", 502);
+    return send(res, err.status, { error: err.code === "site_blocked" || err.code === "post_missing" ? "site_blocked" : err.code, message: err.message, platform: platformOf(url) });
+  }
+  const name = PLATFORM_NAME[post.platform];
+  const extra = r => ({ ...r, image: r.image || post.image, notes: [r.notes, post.author ? `From ${post.author} on ${name}.` : ""].filter(Boolean).join("\n") });
+  const parsed = parseRecipeText(post.caption, { title: post.platform === "youtube" ? post.title : "" });
+  const good = parsed && parsed.ingredients.length >= 3 && parsed.steps.length >= 1;
+  if (good) return send(res, 200, { method: "social", platform: post.platform, recipe: normalize(extra(parsed), post.url) });
+  // "Full recipe on my blog: https://…"
+  for (const link of recipeLinksIn(post.caption)) {
+    try {
+      const page = await fetchPage(link);
+      const data = extractJsonLd(page.html);
+      if (data) return send(res, 200, { method: "linked", platform: post.platform, recipe: normalize({ ...data, image: data.image || post.image }, data.source || page.finalUrl) });
+    } catch {}
+  }
+  if (aiEnabled() && post.caption.trim().length > 40) {
+    try {
+      const r = await claudeExtract({ text: `${name} post${post.title ? ` titled "${post.title}"` : ""}${post.author ? ` by ${post.author}` : ""}. Caption:\n\n${post.caption}`, url: post.url });
+      if (r) return send(res, 200, { method: "social-ai", platform: post.platform, recipe: normalize(extra(r), post.url) });
+    } catch {}
+  }
+  if (parsed) return send(res, 200, { method: "social", platform: post.platform, recipe: normalize(extra(parsed), post.url) });
+  return send(res, 422, { error: "no_recipe_in_post", platform: post.platform, message: `This ${name} post doesn't write the recipe in its ${post.platform === "youtube" ? "description" : "caption"}${post.platform === "youtube" ? "" : ", and doesn't link to one"}. If the creator lists it on their website (often the link in their bio), paste that link instead.` });
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return send(res, 405, { error: "method", message: "Use GET." });
   if (!checkAccess(req, res)) return;
   const url = new URL(req.url, "http://x").searchParams.get("url");
   if (!url) return send(res, 400, { error: "bad_url", message: "Add a recipe link first." });
+  if (platformOf(url)) return fromSocial(url, res);
 
   // 1. The page itself.
   let page = null, firstError = null, archiveNote = "";

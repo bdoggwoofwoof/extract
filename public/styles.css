@@ -341,3 +341,43 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .coach-progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:2px}
 .coach-progress span{display:block;height:100%;background:var(--herb);transition:width .28s ease}
 @media (prefers-reduced-motion:reduce){.coach-hole,.coach-card,.coach-progress span{transition:none}}
+
+/* ===== Ratings and cooking log ===== */
+.stars{display:flex;align-items:center;gap:2px}
+.stars button{background:none;border:0;padding:4px 3px;font-size:22px;line-height:1;cursor:pointer;color:var(--line);min-width:32px;min-height:36px}
+.stars button[aria-pressed="true"]{color:var(--saffron)}
+.stars .hint{margin-left:8px}
+.stars.big button{font-size:30px;min-width:42px;min-height:44px}
+.stars-sm{color:var(--saffron);letter-spacing:1px;font-size:13px;white-space:nowrap}
+.stars-sm .off{color:var(--line)}
+.cook-log{margin-top:28px;display:flex;flex-direction:column;gap:10px}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);background:var(--card)}
+.log li{padding:10px 14px;border-top:1px solid var(--line)}
+.log li:first-child{border-top:0}
+.log li p{margin:4px 0 0;font-family:var(--body);white-space:pre-wrap}
+.log .row{gap:8px}
+
+/* ===== Grocery list by aisle, pantry ===== */
+.aisle-h{display:flex;align-items:center;gap:8px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.aisle-h .n{font-family:var(--mono);font-size:11px;background:var(--herb-soft);color:var(--herb);border-radius:999px;padding:1px 7px;letter-spacing:0}
+.gitem .from,.check .from{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.check:not(.gitem) small.from{display:inline;margin-left:4px}
+.li.make .t{display:flex;flex-direction:column;gap:2px}
+.li.make .meta{font-weight:400}
+.ready{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--herb);background:var(--herb-soft);border-radius:999px;padding:3px 9px;white-space:nowrap}
+#list-tabs{margin-top:0}
+
+/* ===== Social import hint ===== */
+.social-hint .plat{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-right:5px;color:var(--ink)}
+
+/* ===== Help ===== */
+.faq details{border-top:1px solid var(--line);padding:10px 0}
+.faq details:first-child{border-top:0;padding-top:0}
+.faq summary{cursor:pointer;font-weight:600}
+.faq p{margin:8px 0 0;font-family:var(--body);color:var(--ink)}
+.limits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.limits li{display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:3px solid var(--saffron)}
+.limits span{font-family:var(--body);color:var(--muted)}
+.tour-eyebrow .lim{color:var(--saffron);font-weight:600}
+.coach-card.limit{border-top:4px solid var(--saffron)}
+.gear + .gear{margin-left:2px}
