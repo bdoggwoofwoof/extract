@@ -62,3 +62,22 @@ test("pulls the caption out of Instagram's embed page", () => {
 test("finds recipe links in a caption, skipping shops and socials", () => {
   assert.deepEqual(recipeLinksIn("Full recipe: https://www.halfbakedharvest.com/garlic-noodles/. Shop my pans https://amzn.to/abc and https://www.instagram.com/x"), ["https://www.halfbakedharvest.com/garlic-noodles/"]);
 });
+
+import { parseFeed, feedLinksIn, looksLikeFeed } from "../lib/feed.js";
+test("reads RSS and Atom feeds and finds a blog's feed link", () => {
+  const rss = `<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Budget Bytes</title><link>https://www.budgetbytes.com</link>
+    <item><title><![CDATA[One Pot Chili Mac &amp; Cheese]]></title><link>https://www.budgetbytes.com/chili-mac/</link><pubDate>Thu, 29 Oct 2026 12:00:00 +0000</pubDate>
+      <content:encoded><![CDATA[<p><img src="https://www.budgetbytes.com/wp-content/chili.jpg" /></p>]]></content:encoded></item>
+    <item><title>Lemon Rice</title><link>https://www.budgetbytes.com/lemon-rice/</link><media:content url="https://cdn.example.com/rice.jpg"/></item></channel></rss>`;
+  assert.ok(looksLikeFeed(rss));
+  const f = parseFeed(rss, "https://www.budgetbytes.com/feed/");
+  assert.equal(f.title, "Budget Bytes"); assert.equal(f.items.length, 2);
+  assert.equal(f.items[0].title, "One Pot Chili Mac & Cheese");
+  assert.equal(f.items[0].image, "https://www.budgetbytes.com/wp-content/chili.jpg");
+  assert.ok(f.items[0].date > 0);
+  assert.equal(f.items[1].image, "https://cdn.example.com/rice.jpg");
+  const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><title>Smitten</title><link rel="self" href="https://x.com/feed.xml"/><link href="https://x.com/"/><entry><title>Apple cake</title><link rel="alternate" href="https://x.com/apple-cake/"/><updated>2026-10-20T10:00:00Z</updated></entry></feed>`;
+  const a = parseFeed(atom, "https://x.com/feed.xml");
+  assert.equal(a.site, "https://x.com/"); assert.equal(a.items[0].link, "https://x.com/apple-cake/");
+  assert.deepEqual(feedLinksIn(`<link rel="alternate" type="application/rss+xml" title="Feed" href="/feed/"><link rel="alternate" type="application/rss+xml" title="Comments" href="/comments/feed/">`, "https://b.com/x"), ["https://b.com/feed/"]);
+});

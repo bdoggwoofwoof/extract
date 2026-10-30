@@ -56,3 +56,14 @@ test("pantry matching and what can I make", () => {
   const m = canMake({ ingredients: ["2 tbsp olive oil", "1 onion", "## To serve", "1 cup red lentils", "3 cloves garlic", "Salt to taste"] }, pantry);
   assert.equal(m.total, 5); assert.equal(m.have, 4); assert.deepEqual(m.missing.map(x => x.name), ["garlic"]);
 });
+
+import { linkedRecipeFor } from "../public/grocery.js";
+test("byAisle follows your store's order, and ingredient lines find linked recipes", () => {
+  const rows = [{ name: "milk", aisle: "Dairy & eggs" }, { name: "onion", aisle: "Produce" }, { name: "bread", aisle: "Bakery" }];
+  assert.deepEqual(byAisle(rows, r => r.aisle, ["Bakery", "Dairy & eggs", "Produce"]).map(([a]) => a), ["Bakery", "Dairy & eggs", "Produce"]);
+  const rs = [{ id: "a", title: "Homemade Pizza Sauce" }, { id: "b", title: "Pizza Dough (Easy)" }, { id: "c", title: "Rice" }];
+  assert.equal(linkedRecipeFor("1 cup pizza sauce", rs, "x").id, "a");
+  assert.equal(linkedRecipeFor("1 batch pizza dough, rested", rs, "x").id, "b");
+  assert.equal(linkedRecipeFor("2 cups cooked rice", rs, "x"), null);
+  assert.equal(linkedRecipeFor("1 cup pizza sauce", rs, "a"), null);
+});

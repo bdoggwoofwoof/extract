@@ -111,9 +111,9 @@ const AISLE_WORDS = [
   ["Canned & jarred", "canned|tomato paste|tomato sauce|crushed tomato|diced tomato|whole tomato|broth|stock|bouillon|coconut milk|chickpea|black bean|kidney bean|pinto bean|cannellini|white bean|refried|baked bean|tuna|olive|artichoke|roasted red pepper|pickle|caper|salsa|pumpkin puree|jam|jelly|peanut butter|nut butter|almond butter|tahini|applesauce|cream of"],
   ["Meat & seafood", "chicken|beef|pork|turkey|lamb|bacon|sausage|ham|steak|veal|salmon|tuna steak|shrimp|prawn|cod|tilapia|halibut|fish|scallop|crab|lobster|mussel|clam|anchov|prosciutto|pancetta|chorizo|salami|pepperoni|ground meat|meatball|duck|venison|brisket|rib"],
   ["Dairy & eggs", "milk|butter|cream|cheese|yogurt|yoghurt|egg(?!plant)|sour cream|half and half|half-and-half|buttermilk|ghee|parmesan|mozzarella|cheddar|ricotta|feta|mascarpone|cream cheese|cottage|kefir|creme fraiche|crème fraîche|tofu|tempeh"],
-  ["Bakery", "bread|bun|roll|bagel|tortilla|pita|naan|baguette|croissant|english muffin|brioche|sourdough|ciabatta|flatbread|wrap"],
+  ["Bakery", "pizza dough|dough|bread|bun|roll|bagel|tortilla|pita|naan|baguette|croissant|english muffin|brioche|sourdough|ciabatta|flatbread|wrap"],
   ["Pasta, rice & grains", "pasta|spaghetti|penne|macaroni|noodle|linguine|fettuccine|lasagna|orzo|rigatoni|rice|quinoa|couscous|oat|barley|farro|bulgur|polenta|grits|ramen|udon|soba|lentil|split pea|dried bean|breadcrumb|panko|cracker|cereal|granola"],
-  ["Oils, sauces & condiments", "oil|vinegar|soy sauce|tamari|fish sauce|worcestershire|ketchup|mustard|mayo|mayonnaise|hot sauce|sriracha|honey|maple syrup|syrup|hoisin|oyster sauce|teriyaki|bbq sauce|barbecue sauce|dressing|pesto|miso|gochujang|harissa|chili crisp|chili oil|cooking spray|marinara|enchilada sauce|curry paste|sesame oil"],
+  ["Oils, sauces & condiments", "oil|vinegar|soy sauce|tamari|fish sauce|worcestershire|ketchup|mustard|mayo|mayonnaise|hot sauce|sriracha|honey|maple syrup|syrup|hoisin|oyster sauce|teriyaki|bbq sauce|barbecue sauce|dressing|pesto|miso|gochujang|harissa|chili crisp|chili oil|cooking spray|marinara|enchilada sauce|curry paste|sesame oil|sauce"],
   ["Snacks & sweets", "chocolate|chip|pretzel|popcorn|cookie|candy|nut|almond|walnut|pecan|cashew|peanut|pistachio|hazelnut|raisin|dried fruit|dried cranberr|dried apricot|date|seed|chia|flax|sesame seed|pine nut"],
   ["Drinks", "wine|beer|juice|soda|sparkling|coffee|tea|kombucha|liquor|rum|vodka|bourbon|whiskey|tequila|club soda|tonic|sake|mirin|sherry|water bottle"],
   ["Household", "paper towel|toilet paper|foil|plastic wrap|parchment|zip|ziploc|trash bag|garbage bag|dish soap|detergent|sponge|napkin|soap|shampoo|toothpaste|battery|batteries|cling film|wax paper"],
@@ -174,10 +174,25 @@ export function mergeItems(items) {
   return [...rows.values()];
 }
 // Grouped and ordered for the store: [[aisle, rows], ...]
-export function byAisle(rows, aisleFor = r => r.aisle) {
+// order: the aisles in the order you walk your store (AISLES by default).
+export function byAisle(rows, aisleFor = r => r.aisle, order = AISLES) {
   const g = new Map();
   for (const r of rows) { const a = aisleFor(r); if (!g.has(a)) g.set(a, []); g.get(a).push(r); }
-  return [...g].sort((a, b) => AISLES.indexOf(a[0]) - AISLES.indexOf(b[0])).map(([a, rs]) => [a, rs.sort((x, y) => x.name.localeCompare(y.name))]);
+  const pos = a => { const i = order.indexOf(a); return i < 0 ? 999 : i; };
+  return [...g].sort((a, b) => pos(a[0]) - pos(b[0])).map(([a, rs]) => [a, rs.sort((x, y) => x.name.localeCompare(y.name))]);
+}
+// A saved recipe whose title appears in an ingredient line ("1 cup Pizza Sauce" → your "Pizza Sauce").
+const titleKey = t => String(t || "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/\b(homemade|easy|best|simple|quick|my|the|perfect|classic|ultimate|basic)\b/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+export function linkedRecipeFor(line, recipes, selfId) {
+  const l = " " + titleKey(line) + " ";
+  let best = null;
+  for (const r of recipes) {
+    if (r.id === selfId) continue;
+    const k = titleKey(r.title);
+    if (k.length < 5 || !k.includes(" ") && k.length < 7) continue;
+    if (l.includes(" " + k + " ") && (!best || k.length > titleKey(best.title).length)) best = r;
+  }
+  return best;
 }
 
 /* ===== Pantry ===== */

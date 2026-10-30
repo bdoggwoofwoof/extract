@@ -3,7 +3,7 @@ import { FULL_TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
 import * as sync from "/sync.js";
 import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, addTime, watchTimers, timersHtml, fmtClock } from "/cook.js";
-import { itemOf, aisleOf, mergeItems, byAisle, inPantry, canMake, AISLES } from "/grocery.js";
+import { itemOf, aisleOf, mergeItems, byAisle, inPantry, canMake, AISLES, linkedRecipeFor } from "/grocery.js";
 import { parseRecipeText } from "/textparse.js";
 
 /* ===== Helpers ===== */
@@ -97,6 +97,12 @@ function addToPantry(texts) {
   if (add.length) savePantry([...cur, ...add]);
   return add.length;
 }
+// Your aisles: items you moved, and the order you walk your store.
+const aisleStore = () => state.items.get("aislemap") || { id: "aislemap", kind: "aislemap", map: {}, order: [] };
+const aisleOrder = () => { const o = (aisleStore().order || []).filter(a => AISLES.includes(a)); return [...o, ...AISLES.filter(a => !o.includes(a))]; };
+const aisleFor = (name, line = "") => (aisleStore().map || {})[name] || aisleOf(name, line);
+// Blogs you follow.
+const feedStore = () => state.items.get("feeds") || { id: "feeds", kind: "feeds", sites: [], seenAt: 0 };
 const stars = (n, cls = "") => n ? `<span class="stars-sm${cls}" aria-label="${n} out of 5 stars">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>` : "";
 
 /* ===== Storage on this device ===== */
@@ -144,7 +150,7 @@ const syncHooks = {
   get: id => state.items.get(id),
   applyRemote: async item => { state.items.set(item.id, item); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.put(JSON.parse(JSON.stringify(item)))).catch(() => {}); },
   applyRemoteDelete: async id => { state.items.delete(id); if (useLocal) saveLocalAll(); else await idb("readwrite", s => s.delete(id)).catch(() => {}); },
-  afterPull: () => { if (["library", "books", "book", "recipe", "plan", "list", "pantry"].includes(state.view.name) && !document.querySelector(".scrim")) render(); }
+  afterPull: () => { if (["library", "books", "book", "recipe", "plan", "list", "pantry", "feeds"].includes(state.view.name) && !document.querySelector(".scrim")) render(); }
 };
 
 /* ===== Server calls ===== */
@@ -181,7 +187,7 @@ async function unpack(s) {
   if (kind === "z") raw = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
   return JSON.parse(new TextDecoder().decode(raw));
 }
-const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; delete o.rating; delete o.log; return o; };
+const strip = r => { const o = JSON.parse(JSON.stringify(r)); delete o.id; delete o.createdAt; delete o.updatedAt; delete o.recipeIds; if (/^data:/.test(o.image || "")) delete o.image; delete o.fav; delete o.cooked; delete o.rating; delete o.log; delete o.links; return o; };
 async function shareLinkFor(item) {
   const payload = sharePayloadFor(item);
   if (sync.info().signedIn) { try { const id = await sync.createShare(payload); if (id) return location.origin + "/#s=" + id; } catch {} }
@@ -363,12 +369,13 @@ function render() {
   const v = state.view.name;
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; }
   ["library", "books", "add", "settings", "list", "plan", "help"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { plan: "plan", list: "list", pantry: "list", help: "help", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
+  const cur = { plan: "plan", list: "list", pantry: "list", help: "help", feeds: "library", cook: "library", library: "library", recipe: "library", edit: "add", add: "add", books: "books", book: "books", settings: "settings" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   document.body.classList.toggle("cooking", v === "cook");
-  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
+  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v === "add") wireAdd();
+  if (v === "feeds" || v === "library") refreshFeeds();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
 }
 const tagsOf = r => (r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
@@ -381,9 +388,11 @@ function rcard(r, act = "open-recipe") {
     <div class="tags">${tagsOf(r)}</div></button>`;
 }
 
+const newPostCount = () => { const fs = feedStore(), c = feedCache(); return fs.sites.length && c ? c.items.filter(i => i.date > (fs.seenAt || 0)).length : 0; };
+const libTabs = cur => `<div class="tabs" role="tablist" id="lib-tabs"><button role="tab" aria-selected="${cur === "library"}" data-act="nav" data-v="library">My recipes</button><button role="tab" aria-selected="${cur === "feeds"}" data-act="nav" data-v="feeds" id="tab-feeds">From blogs${newPostCount() ? ` <span class="n">${newPostCount()}</span>` : ""}</button></div>`;
 function vLibrary() {
   const all = recipes();
-  if (!all.length) return `<h1>Your recipes</h1>
+  if (!all.length) return `${libTabs("library")}<h1>Your recipes</h1>
     <div class="empty"><strong>No recipes yet</strong><span>Paste a link to any recipe page and get just the ingredients and steps. No ads, no life story.</span>
     <div class="row" style="justify-content:center"><button class="btn primary big" data-act="nav" data-v="add">Add a recipe</button><button class="btn big" data-act="example">Try an example</button></div></div>`;
   const counts = {}; all.forEach(r => (r.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
@@ -396,7 +405,7 @@ function vLibrary() {
       : state.sort === "rated" ? (a, b) => (b.rating || 0) - (a.rating || 0) || a.title.localeCompare(b.title)
       : state.sort === "cooked" ? (a, b) => ((b.cooked || []).length - (a.cooked || []).length) || ((b.cooked || []).slice(-1)[0] || 0) - ((a.cooked || []).slice(-1)[0] || 0)
       : (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return `<div class="row"><h1>Your recipes</h1><span class="spacer"></span><span class="meta">${all.length} saved</span></div>
+  return `${libTabs("library")}<div class="row"><h1>Your recipes</h1><span class="spacer"></span><span class="meta">${all.length} saved</span>${list.length ? `<button class="btn sm" data-act="surprise" id="surprise">Surprise me</button>` : ""}</div>
     <div class="tools">
       <input type="search" id="q" placeholder="Search titles, ingredients, categories" value="${esc(state.q)}" aria-label="Search recipes">
       <select id="sort" aria-label="Sort"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option><option value="cooked"${state.sort === "cooked" ? " selected" : ""}>Most cooked</option><option value="rated"${state.sort === "rated" ? " selected" : ""}>Top rated</option></select>
@@ -430,11 +439,13 @@ function nutritionHtml(r) {
 function resetCook(id) { if (state.cook.id !== id) state.cook = { id, scale: 1, ings: new Set(), steps: new Set() }; }
 function cookBody(r, actions = "", after = "") {
   const c = state.cook, base = r.servings || null, k = c.scale;
+  const own = state.items.get(r.id) === r, others = own ? recipes() : [];
   let i = 0;
   const ings = (r.ingredients || []).map(line => {
     if (line.startsWith("## ")) return `<li class="sec">${esc(line.slice(3))}</li>`;
     const idx = i++; const { q, rest } = showQty(line, k); const done = c.ings.has(idx);
-    return `<li class="${done ? "done" : ""}"><label><input type="checkbox" data-act="ing" data-i="${idx}" ${done ? "checked" : ""}><span>${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}</span></label></li>`;
+    const lk = own ? linkedRecipeFor(line, others, r.id) : null;
+    return `<li class="${done ? "done" : ""}"><label><input type="checkbox" data-act="ing" data-i="${idx}" ${done ? "checked" : ""}><span>${q ? `<span class="q">${esc(q)}</span> ` : ""}${esc(rest)}</span></label>${lk ? `<button class="linkrec" data-act="open-recipe" data-id="${esc(lk.id)}" aria-label="Open your recipe for ${esc(lk.title)}">Recipe ↗</button>` : ""}</li>`;
   }).join("");
   let n = 0;
   const steps = (r.steps || []).map((s, si) => {
@@ -467,6 +478,31 @@ function cookBody(r, actions = "", after = "") {
     </div>`;
 }
 
+// "Uses": recipes this one links to (picked by you, or named in its ingredients). "Used in": the other way round.
+function usesOf(r) {
+  const ids = new Set((r.links || []).filter(id => state.items.has(id)));
+  (r.ingredients || []).forEach(l => { const x = !l.startsWith("## ") && linkedRecipeFor(l, recipes(), r.id); if (x) ids.add(x.id); });
+  return [...ids].map(id => state.items.get(id));
+}
+const usedIn = r => recipes().filter(x => x.id !== r.id && usesOf(x).some(u => u.id === r.id));
+function linksHtml(r) {
+  const uses = usesOf(r), used = usedIn(r);
+  const a = x => `<a href="#" data-act="open-recipe" data-id="${esc(x.id)}">${esc(x.title)}</a>`;
+  return `<div class="links-row" id="links">${uses.length ? `<span><strong>Uses</strong> ${uses.map(a).join(", ")}</span>` : ""}${used.length ? `<span><strong>Used in</strong> ${used.map(a).join(", ")}</span>` : ""}
+    <button class="btn sm ghost" data-act="link-pick" data-id="${esc(r.id)}">${uses.length ? "Edit links" : "+ Link a recipe"}</button></div>`;
+}
+function openLinkPicker(id, q = "") {
+  const r = state.items.get(id); if (!r) return;
+  const mine = new Set(r.links || []);
+  const list = recipes().filter(x => x.id !== id && (!q || x.title.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.title.localeCompare(b.title));
+  state.linkFor = id;
+  modal(`<h2>Link recipes to “${esc(r.title)}”</h2><p class="hint">For a sauce, dough, or side that's its own recipe. Linked recipes show on this page, and their ingredients can go on your list with it. Recipes named in the ingredients link by themselves.</p>
+    <input type="search" id="lk-q" placeholder="Search your recipes" value="${esc(q)}" aria-label="Search your recipes" autocomplete="off">
+    <div class="list pick-list">${list.length ? list.map(x => `<label class="check"><input type="checkbox" class="lk" value="${esc(x.id)}" ${mine.has(x.id) ? "checked" : ""}> ${esc(x.title)}</label>`).join("") : `<p class="hint" style="padding:12px 14px">No other recipes${q ? " match" : " yet"}.</p>`}</div>
+    <div class="row"><button class="btn primary" data-act="link-save">Save links</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+  const qi = $("#lk-q"); if (qi && q) { qi.focus(); qi.setSelectionRange(q.length, q.length); }
+}
+
 function vRecipe() {
   const r = state.items.get(state.view.id);
   if (!r) return `<button class="back" data-act="nav" data-v="library">← All recipes</button><p>This recipe was deleted.</p>`;
@@ -479,6 +515,7 @@ function vRecipe() {
   const canCook = (r.steps || []).some(x => !x.startsWith("## "));
   const more = state.moreMenu ? `<div class="popover more-menu">
       <button class="mitem" data-act="plan-recipe" data-id="${esc(r.id)}">Add to meal plan</button>
+      <button class="mitem" data-act="link-pick" data-id="${esc(r.id)}">Link other recipes</button>
       <button class="mitem" data-act="edit" data-id="${esc(r.id)}">Edit recipe</button>
       <button class="mitem" data-act="book-menu" aria-expanded="${state.bookMenu}">Add to a book${inBooks.length ? ` (in ${inBooks.length})` : ""}</button>
       <button class="mitem" data-act="cooked" data-id="${esc(r.id)}">I made this: add to cooking log</button>
@@ -493,6 +530,7 @@ function vRecipe() {
         <button class="btn" data-act="more" aria-expanded="${!!state.moreMenu}" aria-label="More actions">More</button>
       </div>
       <div class="stars" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n => `<button data-act="rate" data-id="${esc(r.id)}" data-v="${n}" aria-pressed="${(r.rating || 0) >= n}" aria-label="${n} star${n === 1 ? "" : "s"}${r.rating === n ? " (tap again to clear)" : ""}">★</button>`).join("")}<span class="hint">${r.rating ? "Your rating" : "Rate it"}</span></div>
+      ${linksHtml(r)}
       ${more}${menu}${confirm}
       ${inBooks.length || cookedText(r) ? `<p class="hint">${inBooks.length ? `In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}` : ""}${inBooks.length && cookedText(r) ? " · " : ""}${esc(cookedText(r))}</p>` : ""}
     </div>`;
@@ -500,8 +538,9 @@ function vRecipe() {
   const logHtml = `<section class="cook-log" id="cook-log"><div class="row"><h3>Cooking log</h3><span class="spacer"></span><button class="btn sm" data-act="cooked" data-id="${esc(r.id)}">+ Add</button></div>
     ${log.length ? `<ul class="log">${log.map(e => `<li><div class="row"><strong>${esc(new Date(e.at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</strong>${stars(e.rating)}<span class="spacer"></span><button class="btn sm ghost" data-act="log-del" data-id="${esc(r.id)}" data-e="${esc(e.id)}" aria-label="Delete this entry">✕</button></div>${e.note ? `<p>${esc(e.note)}</p>` : ""}</li>`).join("")}</ul>`
       : `<p class="hint">Each time you make it, jot what you changed or what to try next time.</p>`}</section>`;
+  const surprise = state.view.surprise ? `<div class="notice row" style="margin-bottom:12px"><span>Surprise pick. How about this one?</span><span class="spacer"></span><button class="btn sm" data-act="surprise">Another</button><button class="btn sm" data-act="plan-recipe" data-id="${esc(r.id)}">Plan it</button></div>` : "";
   return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">← ${fromBook ? "Back to book" : "All recipes"}</button>
-    ${cookBody(r, actions, logHtml)}`;
+    ${surprise}${cookBody(r, actions, logHtml)}`;
 }
 
 function cookSteps(r) {
@@ -686,10 +725,10 @@ function vList() {
   const open = items.filter(i => !i.done), got = items.filter(i => i.done);
   const row = i => `<label class="check gitem${i.done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(i.id)}" ${i.done ? "checked" : ""}><span>${esc(i.text)}</span></label>`;
   // By aisle: the same ingredient from several recipes becomes one line with the amounts added up.
-  const mrow = (m, done) => `<label class="check gitem${done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(m.ids.join(","))}" ${done ? "checked" : ""}><span>${esc(m.text)}${m.recipes.length ? `<small class="from">${esc(m.recipes.join(" · "))}</small>` : ""}</span></label>`;
+  const mrow = (m, done) => `<div class="gline"><label class="check gitem${done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(m.ids.join(","))}" ${done ? "checked" : ""}><span>${esc(m.text)}${m.recipes.length ? `<small class="from">${esc(m.recipes.join(" · "))}</small>` : ""}</span></label>${done ? "" : `<button class="aisle-tag" data-act="aisle-pick" data-name="${esc(m.name)}" aria-label="Move ${esc(m.name)} to another aisle">Move</button>`}</div>`;
   let body = "";
   if (mode === "aisle") {
-    body = byAisle(mergeItems(open)).map(([a, rows]) => `<section><h3 class="aisle-h">${esc(a)} <span class="n">${rows.length}</span></h3><div class="list" style="margin-top:8px">${rows.map(m => mrow(m, false)).join("")}</div></section>`).join("");
+    body = byAisle(mergeItems(open), m => aisleFor(m.name, m.texts[0]), aisleOrder()).map(([a, rows]) => `<section><h3 class="aisle-h">${esc(a)} <span class="n">${rows.length}</span></h3><div class="list" style="margin-top:8px">${rows.map(m => mrow(m, false)).join("")}</div></section>`).join("");
   } else {
     const groups = new Map();
     open.forEach(i => { const k = i.recipeId || ""; if (!groups.has(k)) groups.set(k, { title: i.recipeTitle || "Other items", id: i.recipeId, items: [] }); groups.get(k).items.push(i); });
@@ -699,7 +738,7 @@ function vList() {
   const cart = mode === "aisle" ? mergeItems(got).map(m => mrow(m, true)).join("") : got.map(row).join("");
   return `${listTabs("list")}
     <div class="row"><h1>Grocery list</h1><span class="spacer"></span>${open.length ? `<span class="meta">${open.length} to get</span>` : ""}</div>
-    <div class="row" style="margin-top:12px"><div class="seg" role="group" aria-label="Group the list" id="list-mode"><button data-act="list-mode" data-v="aisle" aria-pressed="${mode === "aisle"}">By aisle</button><button data-act="list-mode" data-v="recipe" aria-pressed="${mode === "recipe"}">By recipe</button></div></div>
+    <div class="row" style="margin-top:12px"><div class="seg" role="group" aria-label="Group the list" id="list-mode"><button data-act="list-mode" data-v="aisle" aria-pressed="${mode === "aisle"}">By aisle</button><button data-act="list-mode" data-v="recipe" aria-pressed="${mode === "recipe"}">By recipe</button></div>${mode === "aisle" ? `<button class="btn sm ghost" data-act="aisle-order" id="aisle-order">Arrange aisles</button>` : ""}</div>
     <form class="row" data-form="list-add" style="margin:16px 0">
       <input type="text" id="la-text" placeholder="Add an item, e.g. paper towels" aria-label="Add an item" style="flex:1 1 220px;width:auto" autocomplete="off" enterkeyhint="done">
       <button class="btn primary">Add</button></form>
@@ -717,16 +756,97 @@ function vList() {
 }
 function listText() {
   const items = grocery().items.filter(i => !i.done);
-  if (listMode() === "aisle") return byAisle(mergeItems(items)).map(([a, rows]) => `${a}\n${rows.map(m => "☐ " + m.text).join("\n")}`).join("\n\n");
+  if (listMode() === "aisle") return byAisle(mergeItems(items), m => aisleFor(m.name, m.texts[0]), aisleOrder()).map(([a, rows]) => `${a}\n${rows.map(m => "☐ " + m.text).join("\n")}`).join("\n\n");
   const by = new Map(); items.forEach(i => { const k = i.recipeTitle || "Other"; by.set(k, [...(by.get(k) || []), i.text]); });
   return [...by].map(([t, xs]) => `${t}\n${xs.map(x => "☐ " + x).join("\n")}`).join("\n\n");
+}
+
+/* ===== Blogs you follow ===== */
+const SUGGESTED_BLOGS = [["Budget Bytes", "https://www.budgetbytes.com"], ["RecipeTin Eats", "https://www.recipetineats.com"], ["Smitten Kitchen", "https://smittenkitchen.com"], ["Minimalist Baker", "https://minimalistbaker.com"], ["Pinch of Yum", "https://pinchofyum.com"], ["Love and Lemons", "https://www.loveandlemons.com"]];
+const FEED_KEY = "rk-feedcache";
+function feedCache() { if (state.feedCache) return state.feedCache; try { state.feedCache = JSON.parse(localStorage.getItem(FEED_KEY) || "null"); } catch {} return state.feedCache; }
+function setFeedCache(c) { state.feedCache = c; try { localStorage.setItem(FEED_KEY, JSON.stringify(c)); } catch {} }
+async function refreshFeeds(force) {
+  const fs = feedStore(), c = feedCache();
+  if (!fs.sites.length || state.feedLoading) return;
+  if (!force && c && Date.now() - c.at < 30 * 60e3 && fs.sites.every(s => c.bySite?.[s.id])) return;
+  state.feedLoading = true; if (state.view.name === "feeds") render();
+  const bySite = { ...(c?.bySite || {}) }, errors = {};
+  await Promise.all(fs.sites.map(async s => {
+    try { const j = await api("/api/feed?url=" + encodeURIComponent(s.feedUrl || s.url)); bySite[s.id] = j.items.slice(0, 15).map(i => ({ ...i, site: s.id })); }
+    catch (e) { errors[s.id] = e.message || "Couldn't load"; }
+  }));
+  for (const k of Object.keys(bySite)) if (!fs.sites.some(s => s.id === k)) delete bySite[k];
+  const items = Object.values(bySite).flat().sort((a, b) => b.date - a.date).slice(0, 80);
+  setFeedCache({ at: Date.now(), bySite, items, errors });
+  state.feedLoading = false;
+  if (["feeds", "library"].includes(state.view.name) && !document.querySelector(".scrim")) render();
+}
+async function followBlog(raw) {
+  const st = $("#feed-status"); const say = (m, err) => { if (st) { st.className = "status" + (err ? " err" : ""); st.innerHTML = m; } };
+  const url = raw.trim(); if (!url) return;
+  const fs = feedStore();
+  say('<span class="spin"></span> Finding the blog\'s feed…');
+  try {
+    const j = await api("/api/feed?url=" + encodeURIComponent(url));
+    if (fs.sites.some(s => s.feedUrl === j.feedUrl)) return say("You already follow that blog.");
+    const site = { id: newId("f"), url, feedUrl: j.feedUrl, title: j.title || domain(j.site || url) || url, site: j.site || url };
+    await save({ ...fs, sites: [...fs.sites, site] });
+    const c = feedCache() || { at: Date.now(), bySite: {}, items: [], errors: {} };
+    c.bySite = { ...c.bySite, [site.id]: j.items.slice(0, 15).map(i => ({ ...i, site: site.id })) };
+    c.items = Object.values(c.bySite).flat().sort((a, b) => b.date - a.date).slice(0, 80);
+    setFeedCache(c); toast(`Following ${site.title}`); render();
+  } catch (e) { say(esc(e.message), true); }
+}
+function vFeeds() {
+  const fs = feedStore(), c = feedCache();
+  const siteOf = id => fs.sites.find(s => s.id === id);
+  const followed = new Set(fs.sites.map(s => domain(s.site || s.url)));
+  const sugg = SUGGESTED_BLOGS.filter(([, u]) => !followed.has(domain(u)));
+  const items = (c?.items || []).filter(i => siteOf(i.site));
+  const seen = fs.seenAt || 0;
+  const ago = t => { if (!t) return ""; const d = Math.round((Date.now() - t) / 864e5); return d < 1 ? "Today" : d === 1 ? "Yesterday" : d < 7 ? `${d} days ago` : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
+  setTimeout(() => { if (fs.sites.length && items.some(i => i.date > seen)) save({ ...feedStore(), seenAt: Date.now() }); }, 1500);
+  return `${libTabs("feeds")}<h1>From blogs</h1><p class="lede">New posts from recipe blogs you follow. Tap Save to keep one.</p>
+    <form class="row" data-form="feed-add" style="margin:16px 0" id="feed-add">
+      <input type="url" id="feed-url" placeholder="A blog's address, e.g. budgetbytes.com" aria-label="Blog address" style="flex:1 1 220px;width:auto" autocomplete="off" inputmode="url">
+      <button class="btn primary">Follow</button></form>
+    <span class="status" id="feed-status"></span>
+    ${sugg.length ? `<div class="chips" aria-label="Suggested blogs">${sugg.map(([n, u]) => `<button class="chip" data-act="feed-quick" data-url="${esc(u)}">+ ${esc(n)}</button>`).join("")}</div>` : ""}
+    ${!fs.sites.length ? `<div class="empty" style="margin-top:20px"><strong>No blogs yet</strong><span>Follow a blog above and its new recipes show up here, newest first.</span></div>` : `
+    <div class="row" style="margin-top:18px"><h2>Latest</h2><span class="spacer"></span>${state.feedLoading ? `<span class="status"><span class="spin"></span> Checking…</span>` : `<button class="btn sm ghost" data-act="feed-refresh">Check now</button>`}</div>
+    ${c && c.errors && Object.keys(c.errors).length ? `<p class="status err">${Object.keys(c.errors).map(id => siteOf(id)?.title).filter(Boolean).map(esc).join(", ")} couldn't be loaded just now.</p>` : ""}
+    ${items.length ? `<div class="posts" id="posts">${items.map(i => { const s = siteOf(i.site), have = findBySource(i.link);
+      return `<article class="post${i.date > seen ? " new" : ""}">${i.image ? imgTag(i.image, "post-img") : `<div class="post-img blank" aria-hidden="true"></div>`}
+        <div class="post-b"><a class="post-t" href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a><span class="meta"><span>${esc(s.title)}</span>${i.date ? `<span>${esc(ago(i.date))}</span>` : ""}${i.date > seen ? `<span class="new-tag">New</span>` : ""}</span>
+        ${have ? `<button class="btn sm" data-act="open-recipe" data-id="${esc(have.id)}">Saved ✓</button>` : `<button class="btn sm primary" data-act="feed-save" data-url="${esc(i.link)}">Save</button>`}</div></article>`; }).join("")}</div>`
+      : state.feedLoading ? "" : `<p class="hint">No posts loaded yet. Tap Check now.</p>`}
+    <details class="following" style="margin-top:20px"><summary>Following ${fs.sites.length} blog${fs.sites.length === 1 ? "" : "s"}</summary>
+      <div class="list" style="margin-top:8px">${fs.sites.map(s => `<div class="li"><span class="t">${esc(s.title)}<small class="from">${esc(domain(s.site || s.url))}</small></span><button class="btn sm ghost" data-act="feed-unfollow" data-id="${esc(s.id)}">Unfollow</button></div>`).join("")}</div></details>`}`;
+}
+
+/* ===== Your aisles ===== */
+function openAislePick(name) {
+  const cur = aisleFor(name), moved = !!(aisleStore().map || {})[name];
+  state.aislePickName = name;
+  modal(`<h2>Which aisle for “${esc(name)}”?</h2><p class="hint">Extract remembers this for next time, on every list.</p>
+    <div class="list pick-list">${aisleOrder().map(a => `<button class="pick-row${a === cur ? " on" : ""}" data-act="aisle-set" data-v="${esc(a)}" aria-pressed="${a === cur}"><span>${esc(a)}</span>${a === cur ? `<span class="spacer"></span><span class="meta">Now</span>` : ""}</button>`).join("")}</div>
+    <div class="row">${moved ? `<button class="btn ghost" data-act="aisle-set" data-v="">Back to automatic</button>` : ""}<span class="spacer"></span><button class="btn" data-act="close-modal">Cancel</button></div>`);
+}
+function openAisleOrder() {
+  const o = aisleOrder();
+  modal(`<h2>Arrange aisles</h2><p class="hint">Put them in the order you walk your store. Your list follows it.</p>
+    <ol class="order-list">${o.map((a, i) => `<li><span>${esc(a)}</span><span class="spacer"></span>
+      <button class="btn sm ghost" data-act="aisle-move" data-i="${i}" data-d="-1" ${i ? "" : "disabled"} aria-label="Move ${esc(a)} up">↑</button>
+      <button class="btn sm ghost" data-act="aisle-move" data-i="${i}" data-d="1" ${i < o.length - 1 ? "" : "disabled"} aria-label="Move ${esc(a)} down">↓</button></li>`).join("")}</ol>
+    <div class="row"><button class="btn ghost" data-act="aisle-reset">Reset order</button><span class="spacer"></span><button class="btn primary" data-act="close-modal">Done</button></div>`);
 }
 
 /* ===== Pantry ===== */
 const PANTRY_STARTERS = ["Olive oil", "Butter", "Eggs", "Milk", "All-purpose flour", "Sugar", "Rice", "Pasta", "Onions", "Garlic", "Chicken broth", "Canned tomatoes", "Soy sauce", "Cumin", "Paprika", "Honey", "Lemons", "Parmesan"];
 function vPantry() {
   const items = pantry().items;
-  const groups = byAisle(items.map(p => ({ ...p, aisle: aisleOf(p.name) })));
+  const groups = byAisle(items.map(p => ({ ...p, aisle: aisleFor(p.name) })), r => r.aisle, aisleOrder());
   const have = new Set(items.map(p => p.name));
   const starters = PANTRY_STARTERS.filter(t => !have.has(itemOf(t).name)).slice(0, 12);
   const ranked = recipes().map(r => ({ r, m: canMake(r, items) })).filter(x => x.m.total > 0 && x.m.have > 0)
@@ -753,13 +873,15 @@ function vPantry() {
 function openListPicker(r) {
   const k = state.cook.id === r.id ? state.cook.scale : 1;
   const lines = (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, k); return (q ? q + " " : "") + rest; });
+  const linked = usesOf(r).map(x => ({ r: x, lines: (x.ingredients || []).filter(l => !l.startsWith("## ")) }));
   const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
   modal(`<h2>Add to grocery list</h2>
     <p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
     <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select all</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select none</button></div>
     <div class="list">${lines.map((l, i) => `<label class="check"><input type="checkbox" class="lp" value="${i}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div>
+    ${linked.map((g, gi) => `<h3 style="margin-top:6px">Also from ${esc(g.r.title)}</h3><p class="hint">A linked recipe. Tick what you need for it too.</p><div class="list">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="L${gi}:${li}"> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div>`).join("")}
     <div class="row"><button class="btn primary" data-act="list-add-picked" data-id="${esc(r.id)}">Add to list</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
-  state.pickLines = lines;
+  state.pickLines = lines; state.pickLinked = linked;
 }
 
 function vPlan() {
@@ -777,7 +899,13 @@ function vPlan() {
       ${state.view.week ? `<button class="btn sm ghost" data-act="week" data-d="0">This week</button>` : ""}
       <button class="btn sm" data-act="week" data-d="1" aria-label="Next week">›</button>
     </div>
-    ${planned.length ? `<div class="row" style="margin-top:6px"><button class="btn primary" data-act="plan-to-list">Add this week to grocery list</button><span class="hint">${planned.length} planned meal${planned.length === 1 ? "" : "s"}</span></div>` : `<p class="hint" style="margin-top:6px">Tap + Add on a day to plan a recipe, or add a note like “Leftovers” or “Eat out”.</p>`}
+    ${state.lastFill && state.lastFill.week === (state.view.week || 0) ? `<div class="notice row" style="margin-top:8px"><span>Filled ${state.lastFill.entries.length} meal${state.lastFill.entries.length === 1 ? "" : "s"}. Swap any with ✕ and + Add.</span><span class="spacer"></span><button class="btn sm" data-act="plan-fill-undo">Undo</button></div>` : ""}
+    <div class="row plan-tools" style="margin-top:8px">
+      ${planned.length ? `<button class="btn primary" data-act="plan-to-list">Add week to grocery list</button>` : ""}
+      ${recipes().length ? `<button class="btn" data-act="plan-fill" id="plan-fill">Fill empty days</button>` : ""}
+      <button class="btn" data-act="plan-ics" id="plan-ics" ${days.some(d => planDay(dayKey(d)).entries.length) ? "" : "disabled"}>Add to calendar</button>
+    </div>
+    ${planned.length ? "" : `<p class="hint" style="margin-top:6px">Tap + Add on a day to plan a recipe, or add a note like “Leftovers” or “Eat out”.${recipes().length ? " Or let Fill empty days pick for you." : ""}</p>`}
     <div class="days">${days.map(d => {
       const key = dayKey(d), entries = [...planDay(key).entries].sort((a, b) => order(a.meal) - order(b.meal));
       return `<section class="day${key === todayKey ? " today" : ""}" aria-label="${esc(d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}">
@@ -813,6 +941,106 @@ function drawPlanPicker(q = "") {
     <div class="row"><span class="spacer"></span><button class="btn" data-act="close-modal">Done</button></div>`}`);
   const qi = $("#pp-q"); if (qi && q) { qi.focus(); qi.setSelectionRange(q.length, q.length); }
 }
+/* ===== Fill the week ===== */
+function openPlanFill() {
+  const tags = [...new Set(recipes().flatMap(r => r.tags || []))].sort();
+  const bs = books();
+  const f = state.fillOpts || { meal: "Dinner", from: "all", fresh: true, today: true };
+  state.fillOpts = f;
+  modal(`<h2>Fill empty days</h2><p class="hint">Extract picks a recipe for each day that doesn't have this meal yet. Swap or remove any of them after.</p>
+    <div class="field"><label>Meal</label><div class="seg" role="group" aria-label="Meal">${MEALS.map(m => `<button data-act="fill-meal" data-v="${m}" aria-pressed="${f.meal === m}">${m}</button>`).join("")}</div></div>
+    <div class="field"><label for="fill-from">Pick from</label><select id="fill-from">
+      <option value="all"${f.from === "all" ? " selected" : ""}>All my recipes</option>
+      ${recipes().some(r => r.fav) ? `<option value="fav"${f.from === "fav" ? " selected" : ""}>Favorites</option>` : ""}
+      ${recipes().some(r => r.rating >= 4) ? `<option value="top"${f.from === "top" ? " selected" : ""}>Rated 4 stars and up</option>` : ""}
+      ${pantry().items.length ? `<option value="pantry"${f.from === "pantry" ? " selected" : ""}>What I can mostly make from my pantry</option>` : ""}
+      ${tags.length ? `<optgroup label="Category">${tags.map(t => `<option value="tag:${esc(t)}"${f.from === "tag:" + t ? " selected" : ""}>${esc(t)}</option>`).join("")}</optgroup>` : ""}
+      ${bs.length ? `<optgroup label="Book">${bs.map(b => `<option value="book:${esc(b.id)}"${f.from === "book:" + b.id ? " selected" : ""}>${esc(b.name)}</option>`).join("")}</optgroup>` : ""}
+    </select></div>
+    <label class="check plain"><input type="checkbox" id="fill-fresh" ${f.fresh ? "checked" : ""}> Skip recipes I made in the last 2 weeks</label>
+    ${(state.view.week || 0) === 0 ? `<label class="check plain"><input type="checkbox" id="fill-today" ${f.today ? "checked" : ""}> Only today and later</label>` : ""}
+    <div class="row"><button class="btn primary" data-act="plan-fill-go">Fill the week</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+}
+function fillWeek() {
+  const f = state.fillOpts; f.from = $("#fill-from").value; f.fresh = $("#fill-fresh").checked; f.today = $("#fill-today") ? $("#fill-today").checked : false;
+  const week = state.view.week || 0, start = weekStartOf(new Date(), week), todayKey = dayKey(new Date());
+  const days = [...Array(7)].map((_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return dayKey(d); }).filter(k => !(week === 0 && f.today && k < todayKey));
+  const inWeek = new Set(days.flatMap(k => planDay(k).entries.map(e => e.recipeId).filter(Boolean)));
+  const twoWeeks = Date.now() - 14 * 864e5;
+  let pool = recipes().filter(r => (r.steps || []).length || (r.ingredients || []).length);
+  if (f.from === "fav") pool = pool.filter(r => r.fav);
+  else if (f.from === "top") pool = pool.filter(r => r.rating >= 4);
+  else if (f.from === "pantry") pool = pool.filter(r => { const m = canMake(r, pantry().items); return m.total && m.missing.length <= Math.max(2, Math.round(m.total * 0.3)); });
+  else if (f.from.startsWith("tag:")) pool = pool.filter(r => (r.tags || []).includes(f.from.slice(4)));
+  else if (f.from.startsWith("book:")) { const b = state.items.get(f.from.slice(5)); pool = pool.filter(r => (b?.recipeIds || []).includes(r.id)); }
+  if (f.fresh) pool = pool.filter(r => !(r.cooked || []).some(t => t > twoWeeks));
+  pool = pool.filter(r => !inWeek.has(r.id));
+  // Shuffle, with favorites and good ratings a little more likely.
+  pool = pool.map(r => ({ r, k: Math.random() * (1 + (r.fav ? .5 : 0) + (r.rating || 0) * .15) })).sort((a, b) => b.k - a.k).map(x => x.r);
+  const added = [];
+  for (const k of days) {
+    if (!pool.length) break;
+    if (planDay(k).entries.some(e => e.meal === f.meal)) continue;
+    const r = pool.shift(), id = newId("p");
+    savePlanDay(k, [...planDay(k).entries, { id, meal: f.meal, recipeId: r.id, title: r.title }]);
+    added.push({ day: k, id });
+  }
+  closeModal();
+  state.lastFill = added.length ? { week, entries: added } : null;
+  render();
+  toast(added.length ? `Planned ${added.length} ${f.meal.toLowerCase()}${added.length === 1 ? "" : "s"}` : pool.length ? `Every day already has ${f.meal.toLowerCase()}` : "No recipes fit those choices. Try picking from All my recipes.");
+}
+
+/* ===== Calendar file ===== */
+const DEFAULT_TIMES = { Breakfast: "08:00", Lunch: "12:30", Snack: "15:30", Dinner: "18:00" };
+const mealTimes = () => { try { return { ...DEFAULT_TIMES, ...JSON.parse(settings.get("mealTimes") || "{}") }; } catch { return { ...DEFAULT_TIMES }; } };
+function openCalendar() {
+  const t = mealTimes();
+  modal(`<h2>Add this week to your calendar</h2><p class="hint">Makes a calendar file with each planned meal at these times. Open it to add the meals to your phone's calendar. Each one links back to its recipe.</p>
+    <div class="grid4">${MEALS.map(m => `<div class="field"><label for="mt-${m}">${m}</label><input type="time" id="mt-${m}" value="${esc(t[m])}"></div>`).join("")}</div>
+    <p class="hint">The calendar keeps a copy: if you change the plan later, add it again (meals update instead of doubling up in most calendars).</p>
+    <div class="row"><button class="btn primary" data-act="ics-go">Make calendar file</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+}
+const icsEsc = s => String(s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
+const icsFold = line => { const out = []; let l = line; while (l.length > 73) { out.push(l.slice(0, 73)); l = " " + l.slice(73); } out.push(l); return out.join("\r\n"); };
+function buildIcs(week) {
+  const t = {}; MEALS.forEach(m => { const v = $("#mt-" + m)?.value || mealTimes()[m]; t[m] = v; });
+  settings.set("mealTimes", JSON.stringify(t));
+  const start = weekStartOf(new Date(), week), stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Extract//Meal plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Meal plan"];
+  let n = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    for (const e of planDay(dayKey(d)).entries) {
+      const [hh, mm] = (t[e.meal] || "18:00").split(":").map(Number);
+      const s0 = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm), s1 = new Date(s0.getTime() + 3600e3);
+      const f = x => `${x.getFullYear()}${String(x.getMonth() + 1).padStart(2, "0")}${String(x.getDate()).padStart(2, "0")}T${String(x.getHours()).padStart(2, "0")}${String(x.getMinutes()).padStart(2, "0")}00`;
+      const r = e.recipeId ? state.items.get(e.recipeId) : null;
+      const title = r ? r.title : e.note || e.title || "Meal";
+      const desc = r ? [timeOf(r) && `Time: ${timeOf(r)}`, "", "Ingredients:", ...(r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => "• " + l), "", `Open in Extract: ${location.origin}/#open=${r.id}`].filter(x => x !== false).join("\n") : "";
+      lines.push("BEGIN:VEVENT", `UID:${e.id}@extract-meal-plan`, `DTSTAMP:${stamp}`, `DTSTART:${f(s0)}`, `DTEND:${f(s1)}`, icsFold(`SUMMARY:${icsEsc((e.meal ? e.meal + ": " : "") + title)}`));
+      if (desc) lines.push(icsFold(`DESCRIPTION:${icsEsc(desc)}`));
+      if (r) lines.push(icsFold(`URL:${location.origin}/#open=${r.id}`));
+      lines.push("END:VEVENT"); n++;
+    }
+  }
+  lines.push("END:VCALENDAR");
+  return { text: lines.join("\r\n") + "\r\n", n, name: `meal-plan-${dayKey(start)}.ics` };
+}
+async function exportIcs() {
+  const { text, n, name } = buildIcs(state.view.week || 0);
+  if (!n) { closeModal(); return toast("Plan some meals first."); }
+  const file = new File([text], name, { type: "text/calendar" });
+  closeModal();
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && /android/i.test(navigator.userAgent)) {
+    try { await navigator.share({ files: [file], title: "Meal plan" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  // iPhone and computers open a calendar file straight into the calendar app.
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  toast(`Calendar file with ${n} meal${n === 1 ? "" : "s"} made. Open it to add them.`);
+}
+
 function addPlanEntry(day, entry) {
   const cur = planDay(day).entries;
   savePlanDay(day, [...cur, { id: newId("p"), meal: state.planPick?.meal || "Dinner", ...entry }]);
@@ -882,7 +1110,12 @@ const HELP = [
   ["Rate a recipe and keep notes", "Tap the stars under a recipe's buttons. Each time you make it, More → I made this (or finishing cook mode) adds a dated note to its Cooking log. Sort your recipes by Top rated."],
   ["Shop by aisle", "List groups everything by store aisle and adds up repeats, like 1 onion + 2 onions = 3 onions. Tap By recipe to see it per recipe instead. Share or copy the list for someone else."],
   ["Use the pantry", "List → Pantry. Add what you have at home. Those items start unticked when you add a recipe to your list, and What can I make? ranks your recipes by how much you already have. After shopping, check things off and tap Put in pantry."],
-  ["Plan the week", "Plan → + Add on a day, pick a recipe or write a note. Add this week to grocery list shops for all of it at once."],
+  ["Plan the week", "Plan → + Add on a day, pick a recipe or write a note. Fill empty days picks recipes for you (from favorites, a category, a book, or what your pantry covers), skipping ones you made lately. Add week to grocery list shops for all of it at once."],
+  ["Put meals on my calendar", "Plan → Add to calendar makes a calendar file of the week at the meal times you choose. Open it to add the meals to your phone's calendar; each one links back to its recipe."],
+  ["Can't decide what to make", "On Recipes, tap Surprise me for a random pick from what's showing (filter by a category first if you like). Tap Another for a different one, or Plan it."],
+  ["Link a sauce or dough to a dish", "More → Link other recipes. Linked recipes show as Uses and Used in, and their ingredients can go on your list with the dish. A recipe named in the ingredients (“1 cup pizza sauce”) links by itself."],
+  ["Follow recipe blogs", "Recipes → From blogs. Follow a blog by its address, or tap a suggestion. New posts show newest first; tap Save to read one into Extract."],
+  ["Move an item to another aisle", "On the list, tap Move next to an item and pick its aisle. Extract remembers it. Arrange aisles puts the aisles in the order you walk your store."],
   ["Share a recipe or a book", "Tap Share. The link holds a copy of the recipe, so anyone can open and save it without an account."],
   ["Keep recipes safe", "Recipes are saved on this phone. Settings → Save a backup now and then, or turn on sync to keep them on your other devices too."]
 ];
@@ -890,17 +1123,23 @@ const LIMITS = [
   ["iPhone Share menu", "iPhone doesn't let web apps appear in Safari's Share menu, so on iPhone you copy the link and tap Paste link. Android is fine."],
   ["Videos", "Extract reads a post's caption or description, never the video. If the creator only says the recipe out loud, there's nothing to read. Instagram sometimes hides captions from readers; paste the caption instead."],
   ["Photos and messy pages", state.ai ? "Photos and pages without recipe data are read by Claude, which takes up to a minute." : "Reading photos, and pages with no built-in recipe data, uses Claude, which isn't set up yet. Settings shows how."],
-  ["Aisles are a best guess", "Aisles come from the ingredient's name. You can't move an item to another aisle yet, and store layouts differ."],
+  ["Aisles start as a guess", "Aisles come from the ingredient's name until you move an item. A moved item stays moved, but only by its plain name (“onion”), on every list."],
+  ["Calendar is a copy", "The calendar file is a snapshot. If you change the plan, add it to the calendar again."],
+  ["Blogs need a feed", "Only blogs that publish a feed can be followed (most recipe blogs do). New posts are checked when you open From blogs, not in the background, and there are no notifications."],
   ["Amounts that don't match", "Repeats are only added up when the units match (2 tbsp + 1 tbsp). Cups and grams of the same thing stay on one line as “1 cup + 200 g”."],
   ["The pantry is simple", "It knows what you have, not how much, and doesn't change as you cook or by use-by dates."],
   ["Nutrition", "Only shown when the recipe's website lists it. Extract doesn't work it out for recipes you type in."],
   ["Your data", sync.info().signedIn ? "Sync is on, so your recipes are also kept in your Supabase account." : "Without sync, everything lives only on this phone. Removing Extract from the home screen deletes it, so save a backup first."],
   ["Native-app features", "As a home-screen web app, Extract can't use Apple Watch, Siri, the Reminders app, or kitchen scales."]
 ];
+const TOUR_PARTS = [["add", "Adding recipes", ["add"]], ["recipes", "Your recipes and blogs", ["library", "feeds"]], ["recipe", "Cooking a recipe", ["recipe"]], ["plan", "Meal plan", ["plan"]], ["list", "Grocery list and pantry", ["list", "pantry"]], ["more", "Books, settings and help", ["settings", "help"]]];
+const tourPart = key => { const p = TOUR_PARTS.find(x => x[0] === key); return FULL_TOUR.filter(t => p[2].includes(t.view)); };
 function vHelp() {
   return `<h1>Help</h1>
     <div class="stack" style="margin-top:18px">
-      <section class="panel stack"><h2>Tour</h2><p class="hint">A quick walk around the app, pointing at the real buttons. Nothing you do in it is saved.</p><div><button class="btn primary" data-act="tour" id="help-tour">Take the tour</button></div></section>
+      <section class="panel stack"><h2>Tour</h2><p class="hint">A walk around the whole app (${FULL_TOUR.length} stops), pointing at the real buttons. Nothing you do in it is saved. Or take just one part.</p>
+        <div><button class="btn primary" data-act="tour" id="help-tour">Take the whole tour</button></div>
+        <div class="chips" id="tour-parts">${TOUR_PARTS.map(([k, label]) => `<button class="chip" data-act="tour-part" data-v="${k}">${esc(label)} <span class="n">${tourPart(k).length}</span></button>`).join("")}</div></section>
       <section class="panel stack"><h2>How do I…</h2><div class="faq">${HELP.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("")}</div></section>
       <section class="panel stack" id="limits"><h2>What Extract can't do (yet)</h2><ul class="limits">${LIMITS.map(([t, d]) => `<li><strong>${esc(t)}</strong><span>${esc(d)}</span></li>`).join("")}</ul></section>
       <section class="panel stack"><h2>What's new</h2>${whatsNewHtml()}</section>
@@ -1073,7 +1312,7 @@ async function importBackup(file) {
   if (!items) return toast("That file isn't an Extract backup.");
   let added = 0, updated = 0;
   for (const it of items) {
-    if (!it || !it.id || !["recipe", "book", "grocery", "planday", "pantry"].includes(it.kind)) continue;
+    if (!it || !it.id || !["recipe", "book", "grocery", "planday", "pantry", "aislemap", "feeds"].includes(it.kind)) continue;
     const cur = state.items.get(it.id);
     if (!cur) added++; else if ((it.updatedAt || 0) > (cur.updatedAt || 0)) updated++; else continue;
     state.items.set(it.id, it);
@@ -1241,8 +1480,11 @@ document.addEventListener("click", async e => {
     case "pick-all": document.querySelectorAll(".lp").forEach(c => c.checked = el.dataset.v === "1"); return;
     case "list-add-picked": {
       const r = state.items.get(id), have = grocery().items;
-      const picked = [...document.querySelectorAll(".lp:checked")].map(c => state.pickLines[+c.value]);
-      const fresh = picked.filter(t => !have.some(h => !h.done && h.recipeId === r.id && h.text === t)).map(t => ({ id: newId("g"), text: t, recipeId: r.id, recipeTitle: r.title, done: false }));
+      const picked = [...document.querySelectorAll(".lp:checked")].map(c => {
+        if (c.value[0] === "L") { const [gi, li] = c.value.slice(1).split(":").map(Number); const g = state.pickLinked[gi]; return { t: g.lines[li], r: g.r }; }
+        return { t: state.pickLines[+c.value], r };
+      });
+      const fresh = picked.filter(({ t, r: pr }) => !have.some(h => !h.done && h.recipeId === pr.id && h.text === t)).map(({ t, r: pr }) => ({ id: newId("g"), text: t, recipeId: pr.id, recipeTitle: pr.title, done: false }));
       saveGrocery([...have, ...fresh]); closeModal(); render();
       return toast(fresh.length ? `Added ${fresh.length} item${fresh.length === 1 ? "" : "s"} to your list` : "Those are already on your list");
     }
@@ -1269,6 +1511,28 @@ document.addEventListener("click", async e => {
     case "log-skip": { const c = state.logCtx; closeModal(); if (c && c.count) { const r = state.items.get(c.id); save({ ...r, cooked: [...(r.cooked || []), Date.now()].slice(-100) }); render(); toast("Marked as cooked"); } return; }
     case "log-save": return saveCookLog();
     case "log-del": { const r = state.items.get(id); save({ ...r, log: (r.log || []).filter(e => e.id !== el.dataset.e) }); return render(); }
+    case "aisle-pick": return openAislePick(el.dataset.name);
+    case "aisle-set": { const st = aisleStore(), map = { ...(st.map || {}) }; if (el.dataset.v) map[state.aislePickName] = el.dataset.v; else delete map[state.aislePickName]; save({ ...st, map }); closeModal(); render(); return toast(el.dataset.v ? `Moved to ${el.dataset.v}` : "Back to its usual aisle"); }
+    case "aisle-order": return openAisleOrder();
+    case "aisle-move": { const o = aisleOrder(), i = +el.dataset.i, j = i + (+el.dataset.d); [o[i], o[j]] = [o[j], o[i]]; save({ ...aisleStore(), order: o }); render(); return openAisleOrder(); }
+    case "aisle-reset": save({ ...aisleStore(), order: [] }); render(); return openAisleOrder();
+    case "link-pick": state.moreMenu = false; return openLinkPicker(id);
+    case "link-save": { const r = state.items.get(state.linkFor), ids = [...document.querySelectorAll(".lk:checked")].map(i => i.value); save({ ...r, links: ids }); closeModal(); render(); return toast(ids.length ? `Linked ${ids.length} recipe${ids.length === 1 ? "" : "s"}` : "Links removed"); }
+    case "surprise": {
+      const pool = (state.view.name === "library" ? [...document.querySelectorAll(".rcard")].map(c => state.items.get(c.dataset.id)) : recipes()).filter(r => r && r.id !== state.view.id && r.id !== state.lastSurprise);
+      const r = pool[Math.floor(Math.random() * pool.length)] || recipes()[0]; if (!r) return;
+      state.lastSurprise = r.id; return go({ name: "recipe", id: r.id, surprise: true });
+    }
+    case "plan-fill": return openPlanFill();
+    case "fill-meal": state.fillOpts.meal = el.dataset.v; document.querySelectorAll("[data-act=fill-meal]").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === el.dataset.v)); return;
+    case "plan-fill-go": return fillWeek();
+    case "plan-fill-undo": { const f = state.lastFill; if (f) f.entries.forEach(({ day, id: eid }) => savePlanDay(day, planDay(day).entries.filter(e => e.id !== eid))); state.lastFill = null; render(); return toast("Undone"); }
+    case "plan-ics": return openCalendar();
+    case "ics-go": return exportIcs();
+    case "feed-quick": return followBlog(el.dataset.url);
+    case "feed-refresh": return refreshFeeds(true);
+    case "feed-unfollow": { const fs = feedStore(); save({ ...fs, sites: fs.sites.filter(s => s.id !== id) }); return render(); }
+    case "feed-save": state.addTab = "link"; state.pendingUrl = el.dataset.url; return go({ name: "add" });
     case "list-clear-got": saveGrocery(grocery().items.filter(i => !i.done)); return render();
     case "list-clear-ask": state.confirm = "list"; return render();
     case "list-clear-yes": state.confirm = null; saveGrocery([]); return render();
@@ -1285,6 +1549,7 @@ document.addEventListener("click", async e => {
     case "timer-add": return addTime(el.dataset.id, 60);
     case "photo-remove": keepDraftFields(); state.draft.image = ""; return render();
     case "tour": return openTour($("#tour-root"), FULL_TOUR, "Tour", tourHooks);
+    case "tour-part": return openTour($("#tour-root"), tourPart(el.dataset.v), TOUR_PARTS.find(x => x[0] === el.dataset.v)[1], tourHooks);
   }
 });
 let touchX = null, touchY = null;
@@ -1302,7 +1567,7 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".steps li.step")) { e.preventDefault(); e.target.click(); }
   if (e.key === "Escape" && $("#modal-root").innerHTML) closeModal();
 });
-document.addEventListener("input", e => { if (e.target.id === "pp-q") return drawPlanPicker(e.target.value); if (e.target.id === "q") { state.q = e.target.value; state.focusQ = true; render(); } });
+document.addEventListener("input", e => { if (e.target.id === "pp-q") return drawPlanPicker(e.target.value); if (e.target.id === "lk-q") return openLinkPicker(state.linkFor, e.target.value); if (e.target.id === "q") { state.q = e.target.value; state.focusQ = true; render(); } });
 document.addEventListener("change", e => {
   if (e.target.id === "sort") { state.sort = e.target.value; render(); }
   if (e.target.id === "s-import" && e.target.files[0]) importBackup(e.target.files[0]);
@@ -1320,6 +1585,7 @@ document.addEventListener("submit", e => {
     return;
   }
   if (f === "pp-note") { const t = $("#pp-note").value.trim(); if (!t) return; addPlanEntry(state.planPick.day, { note: t.slice(0, 80) }); toast("Note added"); if (state.view.name === "plan") render(); return drawPlanPicker(); }
+  if (f === "feed-add") return followBlog($("#feed-url").value);
   if (f === "pantry-add") { const t = $("#pa-text").value.trim(); if (!t) return; const n = addToPantry(t.split(/,|\n/).map(x => x.trim()).filter(Boolean)); render(); const i = $("#pa-text"); if (i) i.focus(); if (!n) toast("Already in your pantry"); return; }
   if (f === "list-add") { const t = $("#la-text").value.trim(); if (!t) return; saveGrocery([...grocery().items, { id: newId("g"), text: t, recipeId: "", recipeTitle: "", done: false }]); render(); const i = $("#la-text"); if (i) i.focus(); return; }
   if (f === "new-book") { const n = $("#nb-name").value.trim(); if (!n) return; const b = createBook(n); toast("Book created"); return go({ name: "book", id: b.id, picking: recipes().length > 0 }); }
@@ -1332,7 +1598,12 @@ const TOUR_DEMO = "__tour-demo";
 const tourHooks = {
   async show(step) {
     closeModal();
-    const needsRecipe = step.view === "recipe" || step.view === "library" || step.view === "pantry";
+    const needsRecipe = ["recipe", "library", "pantry", "plan"].includes(step.view);
+    if (step.view === "list" && !grocery().items.length) {
+      // A sample list (never saved) so the steps have something to point at.
+      state.tourListBackup = state.items.get("grocery") || null;
+      state.items.set("grocery", { id: "grocery", kind: "grocery", items: ["1 onion, diced", "2 onions", "2 cups milk", "1 loaf bread", "3 cloves garlic"].map((t, i) => ({ id: "tg" + i, text: t, recipeId: TOUR_DEMO, recipeTitle: "Red Lentil Soup (example)", done: false })), demo: true });
+    }
     if (needsRecipe && !recipes().length) state.items.set(TOUR_DEMO, { ...JSON.parse(JSON.stringify(EXAMPLE)), id: TOUR_DEMO, kind: "recipe", title: "Red Lentil Soup (example)", updatedAt: Date.now() });
     if (step.view === "add") { state.addTab = step.tab || "link"; if (state.view.name !== "add" || $(".tabs [aria-selected=true]")?.dataset.t !== state.addTab) go({ name: "add" }); }
     else if (step.view === "recipe") {
@@ -1342,6 +1613,7 @@ const tourHooks = {
     else if (state.view.name !== step.view) go({ name: step.view });
   },
   done() {
+    if (state.items.get("grocery")?.demo) { if (state.tourListBackup) state.items.set("grocery", state.tourListBackup); else state.items.delete("grocery"); }
     const hadDemo = state.items.delete(TOUR_DEMO);
     if (hadDemo && state.view.id === TOUR_DEMO) go({ name: "library" });
     else if (hadDemo) render();
@@ -1379,6 +1651,9 @@ async function openIncoming() {
     } catch {}
     return go({ name: "message", title: "This link couldn't be opened", body: "It may have been cut off when it was sent. Ask for the recipe again, or have it sent as text." });
   }
+  // From a calendar event: #open=<recipe id>
+  const mo = location.hash.match(/^#open=([\w-]+)$/);
+  if (mo) { clearHash(); return go(state.items.has(mo[1]) ? { name: "recipe", id: mo[1] } : { name: "message", title: "That recipe isn't on this device", body: "It may have been deleted, or saved on another phone. Turn on sync to have it everywhere." }); }
   // Android Share → Extract, or a link like /?url=...
   const q = new URLSearchParams(location.search);
   const incoming = q.get("url") || findUrl(q.get("text")) || findUrl(q.get("title"));
@@ -1398,4 +1673,4 @@ async function openIncoming() {
   if (state.view.name !== "shared") maybeShowTour($("#tour-root"), tourHooks);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();
-window.addEventListener("hashchange", () => { if (/^#[rs]=/.test(location.hash)) openIncoming(); });
+window.addEventListener("hashchange", () => { if (/^#([rs]|open)=/.test(location.hash)) openIncoming(); });

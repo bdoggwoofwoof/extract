@@ -1,14 +1,42 @@
 {
   "outputDirectory": "public",
   "functions": {
-    "api/extract.js": { "maxDuration": 60 },
-    "api/fetch.js": { "maxDuration": 60 }
+    "api/extract.js": {
+      "maxDuration": 60
+    },
+    "api/fetch.js": {
+      "maxDuration": 60
+    },
+    "api/feed.js": {
+      "maxDuration": 30
+    }
   },
   "headers": [
-    { "source": "/sw.js", "headers": [{ "key": "cache-control", "value": "no-cache" }, { "key": "service-worker-allowed", "value": "/" }] },
-    { "source": "/(.*)", "headers": [
-      { "key": "x-content-type-options", "value": "nosniff" },
-      { "key": "referrer-policy", "value": "strict-origin-when-cross-origin" }
-    ] }
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "cache-control",
+          "value": "no-cache"
+        },
+        {
+          "key": "service-worker-allowed",
+          "value": "/"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "x-content-type-options",
+          "value": "nosniff"
+        },
+        {
+          "key": "referrer-policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
   ]
 }

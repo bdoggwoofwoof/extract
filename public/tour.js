@@ -30,6 +30,13 @@ export const TOUR = [
     title: "Import many at once",
     tip: "Moving from another app? Many links takes a whole batch pasted together and saves each recipe.",
     body: "Moving from another app? On Add, choose Many links and paste a whole batch. Extract reads and saves each one, and skips any you already have." },
+  { id: "paste-text", added: "2026-10-30", view: "add", tab: "link", target: "[data-act=add-tab][data-t=paste]",
+    title: "Paste text",
+    tip: "Copied a caption, or a page that blocks readers? Paste the text here. It reads best with an ingredient list and numbered steps.",
+    body: "Add → Paste text reads a recipe from text you copied, like a caption or a page that blocks readers." },
+  { id: "type-it", news: false, added: "2026-10-30", view: "add", tab: "link", target: "[data-act=add-tab][data-t=type]",
+    title: "Type it in",
+    tip: "For family recipes and cards: start from a blank recipe and type it in. You can add your own photo too." },
   { id: "android-share", added: "2026-10-25", view: "add", tab: "link", target: "#nav-add",
     title: "Save from anywhere",
     tip: "Android: on any recipe page, tap Share and pick Extract. iPhone: copy the link, then come here and tap Paste link.",
@@ -40,6 +47,13 @@ export const TOUR = [
   { id: "limit-photo", limit: true, news: false, added: "2026-10-30", view: "add", tab: "link", target: "[data-act=add-tab][data-t=photo]",
     title: "Photos need Claude",
     tip: "Reading a photo of a recipe card, or a page with no built-in recipe data, uses Claude, which needs a key added in Vercel. Without one, the Photo tab stays off (Settings shows how)." },
+  { id: "lib-search", news: false, added: "2026-10-30", view: "library", target: ".tools",
+    title: "Search and sort",
+    tip: "Search titles, ingredients and categories. Sort by most recent, A to Z, most cooked or top rated." },
+  { id: "surprise", added: "2026-10-30", view: "library", target: "#surprise",
+    title: "Surprise me",
+    tip: "Can't decide? Surprise me opens a random recipe from what's showing. Filter by a category first to narrow it down.",
+    body: "On Recipes, tap Surprise me for a random pick from what's showing. Tap Another for a different one, or Plan it straight onto your week." },
   { id: "organize", added: "2026-10-25", view: "library", target: ".chips",
     title: "Find recipes by category",
     tip: "Every category you give a recipe shows up here. Tap one to filter, or search above.",
@@ -48,6 +62,16 @@ export const TOUR = [
     title: "Your recipe cards",
     tip: "Each saved recipe gets a card, with the site's photo when it has one. Tap a card to open the recipe.",
     body: "Recipes now bring their photo along, so your library looks like a cookbook. Add or change a photo in Edit, like a snapshot of your own version." },
+  { id: "blogs-tab", added: "2026-10-30", view: "library", target: "#tab-feeds",
+    title: "Recipes from blogs you follow",
+    tip: "From blogs shows new posts from recipe blogs you follow, newest first. The number counts posts you haven't seen.",
+    body: "Recipes → From blogs: follow your favorite recipe blogs and see their new posts in one place, then save any of them with one tap." },
+  { id: "blogs-follow", news: false, added: "2026-10-30", view: "feeds", target: "#feed-add",
+    title: "Follow a blog",
+    tip: "Type a blog's address, or tap one of the suggestions. Tap Save on a post to read it into Extract." },
+  { id: "limit-blogs", limit: true, news: false, added: "2026-10-30", view: "feeds", target: "#feed-add",
+    title: "Blogs need a feed",
+    tip: "Only blogs that publish a feed can be followed (most recipe blogs do). Posts are checked when you open this tab, not in the background, so there are no notifications." },
   { id: "cook-mode", added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
     title: "Cook mode and timers",
     tip: "Start cooking shows one big step at a time with its ingredients. Times in a step, like 25 minutes, are buttons that start a timer.",
@@ -60,6 +84,9 @@ export const TOUR = [
     title: "Scale while you cook",
     tip: "Tap + or − to change servings and every amount updates. Tick ingredients off below as you go.",
     body: "Tap + or − to change servings and every amount updates. Tick off ingredients as you go, and keep the screen on." },
+  { id: "keep-awake", news: false, added: "2026-10-30", view: "recipe", target: "[data-act=wake]",
+    title: "Keep the screen on",
+    tip: "Stops your phone dimming while you cook. Cook mode turns it on by itself." },
   { id: "units", added: "2026-10-25", view: "recipe", target: "[data-act=units]",
     title: "US and metric",
     tip: "Switch cups and pounds to millilitres and grams, and °F to °C. It sticks for every recipe until you switch back.",
@@ -76,6 +103,10 @@ export const TOUR = [
     title: "Cooking log",
     tip: "Each time you make it, add a dated note: what you changed, what to try next time. Finishing cook mode asks too.",
     body: "Every recipe has a Cooking log. Finish cook mode, or tap + Add, to note the date, a rating, and what you changed or want to try next time." },
+  { id: "linked", added: "2026-10-30", view: "recipe", target: "#links",
+    title: "Linked recipes",
+    tip: "Link a sauce, dough or side that's its own recipe. Recipes named in the ingredients link by themselves, with a Recipe ↗ button on that line.",
+    body: "A recipe can use another one: link a sauce, dough or side with + Link a recipe. Each shows Uses and Used in, ingredients that name a saved recipe get a Recipe ↗ button, and linked ingredients can go on your list with the dish." },
   { id: "grocery", added: "2026-10-25", view: "recipe", target: "[data-act=list-pick]",
     title: "Grocery list",
     tip: "Add to list puts this recipe's ingredients on your list, scaled to your servings. Untick what you already have.",
@@ -86,12 +117,23 @@ export const TOUR = [
     body: "Share makes a link that holds the recipe itself, so anyone can open it and save their own copy. No account needed." },
   { id: "nutrition-print", added: "2026-10-25", view: "recipe", target: "[data-act=more]",
     title: "More: plan, print, edit",
-    tip: "More has the rest: add to your meal plan, add to a book, edit, print a clean copy, or delete. Nutrition facts sit under the steps when the site lists them.",
+    tip: "More has the rest: plan it, link recipes, add to a book, edit (and add your own photo), log a cook, print a clean copy, or delete. Nutrition facts sit under the steps when the site lists them.",
     body: "When a recipe's site lists nutrition facts, they're saved with the recipe under Nutrition per serving. More → Print recipe gives a clean, ad-free page for the fridge." },
   { id: "meal-plan", added: "2026-10-25", view: "plan", target: ".day",
     title: "Weekly meal plan",
     tip: "Tap + Add on a day to plan a recipe or jot a note like Leftovers. Then add the whole week to your grocery list at once.",
     body: "The Plan tab shows your week. Tap + Add on a day to pick a recipe for breakfast, lunch or dinner, or jot a note like Leftovers. Then tap Add this week to grocery list to shop for all of it at once." },
+  { id: "plan-fill", added: "2026-10-30", view: "plan", target: "#plan-fill",
+    title: "Fill empty days",
+    tip: "Let Extract pick: dinners for every empty day from all recipes, favorites, a category, a book, or what your pantry covers. It skips what you made lately, and Undo takes it back.",
+    body: "Plan → Fill empty days picks recipes for the days that don't have that meal yet: from all recipes, favorites, top rated, a category, a book, or what your pantry mostly covers. It skips recipes you made in the last two weeks." },
+  { id: "plan-calendar", added: "2026-10-30", view: "plan", target: "#plan-ics",
+    title: "Add to calendar",
+    tip: "Puts the week's meals on your phone's calendar at the times you choose, each linking back to its recipe.",
+    body: "Plan → Add to calendar makes a calendar file of the week, at the meal times you choose. Open it to add the meals to your phone's calendar; each event links back to its recipe in Extract." },
+  { id: "limit-calendar", limit: true, news: false, added: "2026-10-30", view: "plan", target: "#plan-ics",
+    title: "The calendar keeps a copy",
+    tip: "Changing the plan later doesn't change your calendar. Add it again and most calendars update the meals instead of doubling them." },
   { id: "grocery-tab", news: false, added: "2026-10-25", view: "plan", target: "#nav-list",
     title: "Your list, ready in the store",
     tip: "The List tab holds everything you've added. The number shows what's left to get.",
@@ -100,9 +142,16 @@ export const TOUR = [
     title: "Shop by aisle",
     tip: "Your list is sorted by store aisle, and repeats are added up: 1 onion and 2 onions become 3 onions. Tap By recipe to see it per recipe.",
     body: "The grocery list now sorts itself by store aisle, and adds up the same ingredient from different recipes into one line. Tap By recipe to switch back." },
+  { id: "aisle-move", added: "2026-10-30", view: "list", target: "#aisle-order",
+    title: "Your store's aisles",
+    tip: "Tap Move next to an item to put it in another aisle; Extract remembers. Arrange aisles sets the order you walk your store.",
+    body: "On the grocery list, tap Move next to an item to put it in a different aisle, and Extract remembers it for next time. Arrange aisles puts them in the order you walk your store." },
+  { id: "list-share", news: false, added: "2026-10-30", view: "list", target: "[data-act=list-copy]",
+    title: "Send the list",
+    tip: "Copy or share the list, sorted the way you see it, to send to whoever's shopping." },
   { id: "limit-aisles", limit: true, news: false, added: "2026-10-30", view: "list", target: "#list-mode",
     title: "Aisles are a best guess",
-    tip: "Aisles come from each ingredient's name, and you can't move an item yet. Amounts only add up when the units match: 1 cup + 200 g stays as both." },
+    tip: "Aisles start as a guess from each ingredient's name until you move an item. Amounts only add up when the units match: 1 cup + 200 g stays as both." },
   { id: "pantry", added: "2026-10-30", view: "pantry", target: "#pantry-add",
     title: "Your pantry",
     tip: "Add what's in your kitchen. Those items start unticked when you add a recipe to your list. After shopping, Put in pantry moves checked items here.",
@@ -114,7 +163,7 @@ export const TOUR = [
   { id: "limit-pantry", limit: true, news: false, added: "2026-10-30", view: "pantry", target: "#tab-pantry",
     title: "The pantry is simple",
     tip: "It knows what you have, not how much, and doesn't change as you cook. Salt, pepper and water always count as on hand." },
-  { id: "books", news: false, added: "2026-10-25", view: "pantry", target: "#nav-books",
+  { id: "books", news: false, added: "2026-10-25", view: "settings", target: "#nav-books",
     title: "Recipe books",
     tip: "Books group recipes for a holiday, a person, or a week of dinners. A recipe can be in as many books as you like.",
     body: "Group recipes into books for a holiday, a person, or a week of meals, and share a whole book at once." },
@@ -133,6 +182,9 @@ export const TOUR = [
     title: "Light or dark icon",
     tip: "Pick the home-screen icon here. It's used when you add Extract to your home screen.",
     body: "Extract has a new bottle icon in dark and light. Pick one in Settings → App icon. It's used when you add Extract to your home screen; to switch an icon that's already there, remove Extract and add it again." },
+  { id: "week-start", news: false, added: "2026-10-30", view: "settings", target: "[data-act=week-start]",
+    title: "When your week starts",
+    tip: "The meal plan starts weeks on Sunday. Pick Monday here if that suits you better." },
   { id: "tour-v2", firstRun: false, added: "2026-10-25", view: "settings", target: "[data-act=tour]",
     title: "The tour now shows you around",
     tip: "The tour now opens each screen and points at the real buttons. Take it any time from here.",
@@ -142,7 +194,7 @@ export const TOUR = [
     tip: "As a home-screen web app, Extract can't use Apple Watch, Siri, the Reminders app, or kitchen scales." },
   { id: "help", added: "2026-10-30", view: "help", target: "#nav-help",
     title: "Help is up here",
-    tip: "Help has how-tos, everything Extract can't do yet, what's new, and this tour.",
+    tip: "Help has how-tos, everything Extract can't do yet, what's new, and this tour, whole or one part at a time.",
     body: "The new ? button at the top opens Help: how-tos, a list of what Extract can't do yet, what's new, and the tour." },
   { id: "settings-gear", news: false, added: "2026-10-25", view: "settings", target: "#nav-settings",
     title: "That's the tour",
@@ -168,6 +220,7 @@ export function openTour(el, list, title, h) {
   root.addEventListener("click", onClick);
   document.addEventListener("keydown", onKey);
   window.addEventListener("resize", place);
+  window.addEventListener("scroll", onScroll, { passive: true });
   show();
 }
 
@@ -183,6 +236,7 @@ async function show() {
   }
   drawCard();
   place();
+  setTimeout(place, 250); // late layout (photos, fonts) can still move the target
   busy = false;
 }
 
@@ -234,12 +288,15 @@ function place() {
   card.style.setProperty("--arrow-x", Math.min(Math.max(18, r.left + r.width / 2 - left), cw - 18) + "px");
 }
 
+let scrollFrame = 0;
+function onScroll() { cancelAnimationFrame(scrollFrame); scrollFrame = requestAnimationFrame(place); }
 function close() {
   markSeen(TOUR.map(t => t.id));
   root.innerHTML = "";
   root.removeEventListener("click", onClick);
   document.removeEventListener("keydown", onKey);
   window.removeEventListener("resize", place);
+  window.removeEventListener("scroll", onScroll);
   steps = [];
   try { hooks.done(); } catch {}
 }

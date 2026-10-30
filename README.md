@@ -10,7 +10,10 @@ A free, ad-free recipe app for your phone. Paste or share a link to any recipe p
 - **Pantry** of what you have at home: those items start unticked when you shop, and *What can I make?* ranks your recipes by what you already have.
 - **Instagram, TikTok and YouTube** links: the recipe is read from the caption or description, or from the page the caption links to.
 - **Ratings and a cooking log** with a dated note each time you make something.
-- **Help** (the ? button): how-tos, what Extract can't do yet, what's new, and the tour (which includes Limitation steps).
+- **Linked recipes** (a sauce or dough inside a dish), **Surprise me**, **Fill empty days** for the meal plan, and **Add to calendar** (a calendar file of the week).
+- **From blogs:** follow recipe blogs by their address and see new posts in one place.
+- **Your aisles:** move an item to another aisle (remembered) and arrange aisles in your store's order.
+- **Help** (the ? button): how-tos, what Extract can't do yet, what's new, and the tour (50 stops including Limitation steps; take it whole or one part at a time).
 - **Weekly meal plan** that turns into a grocery list in one tap.
 - **Sync between devices** with your own free Supabase project (optional), plus short share links.
 - **Photos, favorites, a cooked count, US/metric conversion, nutrition facts, printing, read-aloud steps**, importing many links at once, categories, and recipe books.

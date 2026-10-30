@@ -381,3 +381,36 @@ code{font-family:var(--mono);font-size:13px;background:var(--paper);border:1px s
 .tour-eyebrow .lim{color:var(--saffron);font-weight:600}
 .coach-card.limit{border-top:4px solid var(--saffron)}
 .gear + .gear{margin-left:2px}
+
+/* ===== Library tabs, surprise, blogs ===== */
+#lib-tabs{margin-top:0}
+.tabs .n{font-family:var(--mono);font-size:11px;background:var(--saffron);color:#fff;border-radius:999px;padding:1px 7px;margin-left:4px}
+.posts{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:10px}
+.post{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;padding:10px}
+.post.new{border-color:var(--saffron)}
+.post-img{width:84px;height:84px;object-fit:cover;border-radius:8px;flex:none;background:var(--herb-soft)}
+.post-b{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;align-items:flex-start}
+.post-t{font-weight:600;color:var(--ink);text-decoration:none;line-height:1.25;overflow-wrap:anywhere}
+.new-tag{color:var(--saffron);font-weight:600}
+.following summary{cursor:pointer;color:var(--herb);font-weight:600}
+
+/* ===== Linked recipes ===== */
+.links-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:14px}
+.links-row a{color:var(--herb)}
+.ings li{display:flex;align-items:flex-start;gap:6px}
+.ings li label{flex:1}
+.linkrec{background:var(--herb-soft);color:var(--herb);border:0;border-radius:999px;font-size:12px;font-weight:600;padding:3px 9px;cursor:pointer;white-space:nowrap;margin-top:2px}
+
+/* ===== Plan tools ===== */
+.plan-tools{flex-wrap:wrap;gap:8px}
+.check.plain{border:0;padding:4px 0}
+
+/* ===== Aisles ===== */
+.gline{display:flex;align-items:center;border-top:1px solid var(--line)}
+.gline:first-child{border-top:0}
+.gline .gitem{flex:1;border-top:0}
+.aisle-tag{background:none;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px;padding:3px 9px;margin-right:10px;cursor:pointer}
+.order-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r);max-height:50vh;overflow:auto}
+.order-list li{display:flex;align-items:center;gap:4px;padding:6px 6px 6px 14px;border-top:1px solid var(--line)}
+.order-list li:first-child{border-top:0}
+.pick-row.on{background:var(--herb-soft)}
