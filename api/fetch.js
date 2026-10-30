@@ -7,12 +7,12 @@ import { platformOf, fetchSocial, recipeLinksIn, PLATFORM_NAME } from "../lib/so
 import { parseRecipeText } from "../public/textparse.js";
 
 // Instagram, TikTok, YouTube: the recipe is in the caption, or on a page the caption links to.
-async function fromSocial(url, res) {
+async function fromSocial(url, res, check) {
   let post;
   try { post = await fetchSocial(url); }
   catch (e) {
     const err = e instanceof FetchError ? e : new FetchError("fetch_failed", "That post couldn't be reached. Try again, or paste its caption.", 502);
-    return send(res, err.status, { error: err.code === "site_blocked" || err.code === "post_missing" ? "site_blocked" : err.code, message: err.message, platform: platformOf(url) });
+    return send(res, err.status, { error: err.code === "site_blocked" || err.code === "post_missing" ? "site_blocked" : err.code, message: err.message, platform: platformOf(url), detail: check ? e.detail || e.message : undefined });
   }
   const name = PLATFORM_NAME[post.platform];
   const extra = r => ({ ...r, image: r.image || post.image, notes: [r.notes, post.author ? `From ${post.author} on ${name}.` : ""].filter(Boolean).join("\n") });
@@ -45,7 +45,7 @@ export default async function handler(req, res0) {
   if (!checkAccess(req, res)) return;
   const url = new URL(req.url, "http://x").searchParams.get("url");
   if (!url) return send(res, 400, { error: "bad_url", message: "Add a recipe link first." });
-  if (platformOf(url)) return fromSocial(url, res);
+  if (platformOf(url)) return fromSocial(url, res, check);
 
   // 1. The page itself.
   let page = null, firstError = null, archiveNote = "";
