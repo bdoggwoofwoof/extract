@@ -557,3 +557,7 @@ code{font-size:.875rem;background:var(--shade);border-radius:4px;padding:.05rem 
 .cm-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cm-body{grid-template-columns:minmax(0,1fr)}.cm-main{min-width:0}
 @media (min-width:760px){.cm-body{grid-template-columns:minmax(0,3fr) minmax(16rem,2fr)}}
+/* Ironwood screen: a second line under a choice, not run into it */
+.iw-pick .check > span,.panel .check.plain > span{display:flex;flex-direction:column;min-width:0}
+.iw-pick .check small.from,.panel .check.plain small.from{display:block;margin-left:0}
+.iw-pick h3{margin-top:var(--s2)}

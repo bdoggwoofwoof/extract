@@ -83,6 +83,17 @@ About the free plan: Supabase pauses a free project after about a week with no u
 
 Supabase's built-in email sender allows only about 2 emails per hour for the whole project, and one code request per minute per person. Each device needs one sign-in, so set up one device, wait if needed, then the next. To lift the limit, add your own email sender (for example a free Brevo or Resend account) under **Authentication → Emails → SMTP Settings**.
 
+## Using it with Ironwood
+
+Extract and Ironwood (the gym and meal-prep app) keep separate data on the phone, so they trade files and text. In Extract, open **More → Ironwood**:
+
+- **Bring in Ironwood's meal prep:** in Ironwood, Profile → Save backup file (or Copy backup), then choose the file (or paste the text). Pick the recipes; optionally add the prep's groceries (scaled to Ironwood's people and weeks, leaving out pantry items) and put the prep on this week's plan. Importing again updates the same recipes instead of copying them.
+- **Send recipes to Ironwood:** pick recipes (or This Week's Plan) and save the file, then in Ironwood use Profile → Restore. A used Ironwood only adds recipes it doesn't have (and the plan only if its own prep is empty). A fresh Ironwood with no workouts takes a Restore file whole, so use the next option there.
+- **One recipe:** on a recipe, ⋯ → Send to Ironwood copies it in the shape Ironwood's Meals → Recipes → From a post reads.
+- **Ironwood's shopping list:** in Ironwood, Meals → List → Share or copy; paste it into Extract to add it to the grocery list.
+
+`public/ironwood/ing.js` (Ironwood's own ingredient parser) and `public/ironwood/library.json` (its built-in and mix-and-match recipes, which a backup names only by id) are generated from an Ironwood checkout: `node tools/build-ironwood.mjs ../ironwood` (needs Playwright). Rerun it when Ironwood's recipes change.
+
 ## Adding to the tour
 
 Every new feature gets an entry in `public/tour.js` (`TOUR`). People who already took the tour see only the new entries, under "What's new", the next time they open the app.

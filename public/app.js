@@ -5,6 +5,7 @@ import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, pauseTimer, addTime, watchTimers, timersHtml, timerLeft, fmtClock } from "/cook.js";
 import { itemOf, aisleOf, mergeItems, byAisle, inPantry, canMake, AISLES, linkedRecipeFor } from "/grocery.js";
 import { parseRecipeText } from "/textparse.js";
+import * as iw from "/ironwood.js";
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -387,12 +388,12 @@ function render() {
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; badge.setAttribute("aria-label", `${lc} to get`); }
   ["library", "plan", "list", "pantry", "more"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
   const cur = { plan: "plan", list: "list", pantry: "pantry", cook: "library", library: "library", recipe: "library", edit: state.draft?.id ? "library" : "", shared: "library",
-    more: "more", help: "more", feeds: "more", books: "more", book: "more", settings: "more" }[v];
+    more: "more", help: "more", feeds: "more", books: "more", book: "more", settings: "more", ironwood: "more" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   $("#nav-add").setAttribute("aria-current", v === "add" || v === "edit" ? "page" : "false");
   document.body.classList.toggle("cooking", v === "cook");
   document.body.dataset.view = v;
-  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, more: vMore, message: vMessage }[v];
+  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, more: vMore, message: vMessage, ironwood: vIronwood }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v !== lastView) { lastView = v; const h = v === "cook" ? $("#cm-step") : $("#main h1"); if (h) announce(v === "cook" ? `Cooking. ${$(".cm-count")?.textContent || ""}` : h.textContent.trim()); }
   if (v === "add") wireAdd();
@@ -503,6 +504,7 @@ function vMore() {
     <div class="mlist">
       ${row("books", "Collections", nb ? `${nb} collection${nb === 1 ? "" : "s"}` : "Group recipes for a holiday, a person or a week", "more-collections")}
       ${row("feeds", "From Blogs", fs.sites.length ? (np ? `${np} new post${np === 1 ? "" : "s"}` : `Following ${fs.sites.length}`) : "Follow recipe blogs you like", "more-feeds")}
+      ${row("ironwood", "Ironwood", "Bring in its meal prep and shopping list, or send it recipes", "more-ironwood")}
       ${row("help", "Help and Tour", "How-tos, what Extract can't do yet, and the tour", "more-help")}
       ${row("settings", "Settings", "Appearance, text size, timers, sync and backups", "more-settings")}
     </div>
@@ -658,6 +660,7 @@ function openRecipeSheet(id) {
     <button class="mitem" data-act="link-pick" data-id="${esc(id)}">Link Other Recipes</button>
     <button class="mitem" data-act="cooked" data-id="${esc(id)}">Log a Cook</button>
     <button class="mitem" data-act="share" data-id="${esc(id)}">Share</button>
+    <button class="mitem" data-act="iw-send" data-id="${esc(id)}">Send to Ironwood <span class="hint">Copies it for From a post</span></button>
     <button class="mitem" data-act="print">Print</button>
     <button class="mitem danger" data-act="delete-recipe" data-id="${esc(id)}">Delete Recipe</button></div>
     <button class="btn" data-act="close-modal">Cancel</button>`, true);
@@ -1337,6 +1340,121 @@ function vShared() {
   return banner + `<h1>${esc(p.book.name)}</h1>${p.book.description ? `<p class="lede">${esc(p.book.description)}</p>` : ""}
     <div class="cards">${p.recipes.map((r, i) => rcard({ ...r, id: String(i) }, "shared-open")).join("")}</div>`;
 }
+/* ===== Ironwood ===== */
+// Extract and Ironwood keep their data apart on the phone, so they trade a backup file, a restore file, and text.
+function vIronwood() {
+  const x = state.iw, all = recipes().sort((a, b) => a.title.localeCompare(b.title));
+  const sel = state.iwOut || (state.iwOut = new Set(weekRecipeIds()));
+  const pick = x ? `<div class="iw-pick stack">
+      <p class="hint">Ironwood's prep: ${x.prep.length} recipe${x.prep.length === 1 ? "" : "s"} for ${x.people} ${x.people === 1 ? "person" : "people"}, ${x.weeks} week${x.weeks === 1 ? "" : "s"}.${x.missing ? ` ${x.missing} couldn't be read (a newer Ironwood recipe; update Extract's copy of the library).` : ""}${x.from ? ` Backup from ${esc(new Date(x.from).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}.` : ""}</p>
+      <div class="list">${x.prep.map(p => `<label class="check"><input type="checkbox" class="iw-r" value="${esc(p.id)}" ${state.iwSel.has(p.id) ? "checked" : ""}> <span>${esc(p.r.name)}<small class="from">${p.n}× a week · ${esc(iw.IW_CATS[p.r.cat] || "")}${findIw(p.id) ? " · already in Extract (updates it)" : ""}</small></span></label>`).join("")}</div>
+      ${x.mine.length ? `<h3>Your other Ironwood recipes</h3><div class="list">${x.mine.map(p => `<label class="check"><input type="checkbox" class="iw-r" value="${esc(p.id)}" ${state.iwSel.has(p.id) ? "checked" : ""}> <span>${esc(p.r.name)}${findIw(p.id) ? `<small class="from">already in Extract (updates it)</small>` : ""}</span></label>`).join("")}</div>` : ""}
+      <label class="check plain"><input type="checkbox" id="iw-groc" ${x.prep.length ? "checked" : "disabled"}> <span>Add the prep's groceries to my list<small class="from">Scaled to ${x.people} ${x.people === 1 ? "person" : "people"} × ${x.weeks} week${x.weeks === 1 ? "" : "s"}, like Ironwood's list. Things in your pantry are left off.</small></span></label>
+      <label class="check plain"><input type="checkbox" id="iw-plan-in" ${x.prep.length ? "" : "disabled"}> <span>Put the prep on this week's plan<small class="from">Each recipe as many times as Ironwood says, from today on. Building blocks are skipped.</small></span></label>
+      <div class="row"><button class="btn primary" data-act="iw-import">Import Selected</button><button class="btn" data-act="iw-clear">Cancel</button></div></div>` : "";
+  return `<button class="back" data-act="nav" data-v="more">‹ More</button><h1>Ironwood</h1>
+    <p class="lede">Extract and Ironwood keep their data apart on your phone, so they trade a file or copied text. Nothing moves until you do it here.</p>
+    <div class="stack" style="margin-top:18px">
+      <section class="panel stack" id="iw-in"><h2>Bring in Ironwood's meal prep</h2>
+        <p class="hint">In Ironwood, go to Profile → Save backup file (or Copy backup). Choose the file here, or paste the copied text. Extract reads only the meal prep and your recipes; workouts stay in Ironwood.</p>
+        <div class="row"><label class="btn" for="iw-file">Choose Backup File</label><input type="file" id="iw-file" accept="application/json,.json,text/plain" hidden></div>
+        <div class="field"><label for="iw-text">Or paste the backup text</label><textarea id="iw-text" rows="3" placeholder="Paste from Copy backup"></textarea></div>
+        <div><button class="btn sm" data-act="iw-read-text">Read Pasted Backup</button></div>
+        <p class="status" id="iw-status" role="status"></p>
+        ${pick}
+      </section>
+      <section class="panel stack" id="iw-out"><h2>Send recipes to Ironwood</h2>
+        <p class="hint">Makes a file for Ironwood's Profile → Restore. Ironwood only adds recipes it doesn't have yet, so nothing there is replaced, and sending a recipe twice doesn't copy it. For one recipe, open it and tap ⋯ → Send to Ironwood.</p>
+        <div class="row"><button class="btn sm" data-act="iw-out-week">This Week's Plan</button><button class="btn sm" data-act="iw-out-fav">Favorites</button><button class="btn sm" data-act="iw-out-none">Clear</button><span class="spacer"></span><span class="count">${sel.size} chosen</span></div>
+        <div class="list pick-list">${all.length ? all.map(r => `<label class="check"><input type="checkbox" class="iw-o" value="${esc(r.id)}" ${sel.has(r.id) ? "checked" : ""}> ${esc(r.title)}</label>`).join("") : `<p class="hint" style="padding:12px 14px">No recipes yet.</p>`}</div>
+        <label class="check plain"><input type="checkbox" id="iw-plan-out"> <span>Also send this week's plan as Ironwood's meal prep<small class="from">Ironwood uses it only if its own prep is empty.</small></span></label>
+        <div><button class="btn primary" data-act="iw-export" ${sel.size ? "" : "disabled"}>Save File for Ironwood</button></div>
+        <p class="hint">If Ironwood has no workouts logged yet, its Restore takes a file whole. Send recipes one at a time with ⋯ → Send to Ironwood instead.</p>
+      </section>
+      <section class="panel stack" id="iw-list"><h2>Ironwood's shopping list</h2>
+        <p class="hint">In Ironwood, go to Meals → List → Share or copy, and copy it. Paste it here to put it on your grocery list, sorted into your aisles.</p>
+        <div class="field"><label for="iw-shop">Shopping list</label><textarea id="iw-shop" rows="4" placeholder="Ironwood shopping list · …"></textarea></div>
+        <div><button class="btn" data-act="iw-shop-add">Add to Grocery List</button></div>
+      </section>
+    </div>`;
+}
+const findIw = iwId => recipes().find(r => r.ironwood === iwId);
+// Recipes on this week's plan, and how many times each.
+function weekCounts() {
+  const start = weekStartOf(new Date(), 0), c = new Map();
+  for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); planDay(dayKey(d)).entries.forEach(e => e.recipeId && state.items.has(e.recipeId) && c.set(e.recipeId, (c.get(e.recipeId) || 0) + 1)); }
+  return c;
+}
+const weekRecipeIds = () => [...weekCounts().keys()];
+async function iwRead(text) {
+  const st = $("#iw-status"); if (st) { st.className = "status"; st.innerHTML = '<span class="spin"></span> Reading the backup…'; }
+  try {
+    const x = await iw.readBackup(text);
+    if (!x.prep.length && !x.mine.length) { if (st) { st.className = "status err"; st.textContent = "That backup has no meal prep or recipes of your own yet."; } return; }
+    state.iw = x; state.iwSel = new Set(x.prep.map(p => p.id)); render();
+    const p = $(".iw-pick"); if (p) p.scrollIntoView({ block: "start", behavior: "smooth" });
+  } catch (e) { if (st) { st.className = "status err"; st.textContent = e.message === "library" ? "Couldn't load Ironwood's recipe list. Open Extract once while online, then try again." : e.message; } }
+}
+function iwImport() {
+  const x = state.iw; if (!x) return;
+  const chosen = [...document.querySelectorAll(".iw-r:checked")].map(i => i.value);
+  const all = [...x.prep, ...x.mine], byId = new Map(all.map(p => [p.id, p]));
+  const saved = new Map(), now = Date.now();
+  for (const id of chosen) {
+    const p = byId.get(id); if (!p) continue;
+    const prev = findIw(id), r = { ...(prev || {}), ...iw.toExtract(p.r, id), id: prev ? prev.id : newId("r"), createdAt: prev?.createdAt || now, updatedAt: now };
+    if (prev) { r.fav = prev.fav; r.rating = prev.rating; r.log = prev.log; r.cooked = prev.cooked; r.image = prev.image || ""; r.links = prev.links; r.tags = [...new Set([...(prev.tags || []), ...r.tags])]; }
+    save(r); saved.set(id, r);
+  }
+  let groc = 0, planned = 0;
+  const prepChosen = x.prep.filter(p => saved.has(p.id));
+  if ($("#iw-groc")?.checked && prepChosen.length) {
+    const pi = pantry().items, before = grocery().items, add = [];
+    for (const p of prepChosen) {
+      const r = saved.get(p.id), k = iw.prepScale(p, x.people, x.weeks);
+      for (const l of r.ingredients) { if (l.startsWith("## ")) continue; const { q, rest } = splitQty(l, k); const text = (q ? q + " " : "") + rest; if (inPantry(itemOf(text).name, pi)) continue; add.push({ id: newId("g"), text, recipeId: r.id, recipeTitle: r.title, done: false }); }
+    }
+    saveGrocery([...before, ...add]); groc = add.length;
+  }
+  if ($("#iw-plan-in")?.checked && prepChosen.length) {
+    const slots = { breakfast: ["Breakfast"], snack: ["Snack"], main: ["Lunch", "Dinner"] }, used = {};
+    for (const p of prepChosen) {
+      const meals = slots[p.r.cat]; if (!meals) continue;
+      for (let t = 0; t < Math.min(p.n, 7 * meals.length); t++) {
+        // fill the soonest free slot of that kind, from today on
+        let placed = false;
+        for (let i = 0; i < 7 && !placed; i++) for (const meal of meals) {
+          const d = new Date(); d.setDate(d.getDate() + i); const key = dayKey(d) + meal;
+          if (used[key] || planDay(dayKey(d)).entries.some(e => e.meal === meal)) continue;
+          used[key] = 1; const cur = planDay(dayKey(d)).entries; savePlanDay(dayKey(d), [...cur, { id: newId("p"), meal, recipeId: saved.get(p.id).id }]); planned++; placed = true; break;
+        }
+      }
+    }
+  }
+  state.iw = null; render(); haptic();
+  toast(`Imported ${saved.size} recipe${saved.size === 1 ? "" : "s"} from Ironwood${groc ? `, ${groc} grocery item${groc === 1 ? "" : "s"}` : ""}${planned ? `, ${planned} planned meal${planned === 1 ? "" : "s"}` : ""}`);
+}
+async function iwExport() {
+  const ids = [...(state.iwOut || [])].filter(id => state.items.has(id)); if (!ids.length) return;
+  const counts = weekCounts();
+  const plan = $("#iw-plan-out")?.checked ? ids.filter(id => counts.has(id)).map(id => ({ id, n: counts.get(id) })) : null;
+  const name = `extract-for-ironwood-${new Date().toISOString().slice(0, 10)}.json`;
+  const file = new File([iw.ironwoodFile(ids.map(id => state.items.get(id)), plan)], name, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Recipes for Ironwood" }); toast("In Ironwood: Profile → Restore, then choose this file"); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  toast("Saved. In Ironwood: Profile → Restore, then choose this file");
+}
+function iwShopAdd() {
+  const items = iw.parseShoppingList($("#iw-shop")?.value || ""); if (!items.length) return toast("Paste Ironwood's shopping list first");
+  const before = grocery().items;
+  saveGrocery([...before, ...items.map(i => ({ id: newId("g"), text: i.text, recipeId: "", recipeTitle: "Ironwood prep", done: false }))]);
+  $("#iw-shop").value = ""; render();
+  toast(`Added ${items.length} item${items.length === 1 ? "" : "s"} to your grocery list`, () => { saveGrocery(before); render(); });
+}
+
 /* ===== Help ===== */
 const HELP = [
   ["Save a recipe from a website", "Copy the recipe page's link, then tap Paste Recipe Link on the home screen (or + at the top, then Paste Link). Check it over, then Save Recipe. Sites that turn readers away, like Allrecipes, are read from the Internet Archive's saved copy."],
@@ -1355,6 +1473,7 @@ const HELP = [
   ["Can't decide what to make", "On Recipes, tap Surprise Me for a random pick from what's showing. Tap Another for a different one."],
   ["Link a sauce or dough to a dish", "On the recipe, tap ⋯ → Link Other Recipes. A recipe named in the ingredients (“1 cup pizza sauce”) links by itself."],
   ["Follow recipe blogs", "More → From Blogs. Follow a blog by its address, or tap a suggestion. Tap Save on a post to import it."],
+  ["Use it with Ironwood", "More → Ironwood. To bring in Ironwood's meal prep, save a backup in Ironwood (Profile → Save backup file) and choose it there; you can add its groceries and put it on this week's plan. To send recipes to Ironwood, save the file there and use Ironwood's Profile → Restore (it only adds recipes it doesn't have). For one recipe, ⋯ → Send to Ironwood, then Ironwood's Meals → Recipes → From a post."],
   ["Share a recipe or a collection", "Tap Share. The link holds a copy of the recipe, so anyone can open and save it without an account."],
   ["Make the text bigger", "Extract follows your phone's text size. Settings → Text size makes it bigger still, and cooking mode has its own A+ and A−."],
   ["Use it offline", "Saved recipes, cooking, timers, your plan, groceries and pantry all work without internet. Importing links, blogs and sync need a connection; links you paste offline can be saved for later."],
@@ -1373,9 +1492,10 @@ const LIMITS = [
   ["The pantry is simple", "It knows what you have, not how much, and doesn't change as you cook or by use-by dates."],
   ["Nutrition", "Only shown when the recipe's website lists it. Extract doesn't work it out for recipes you type in."],
   ["Your data", sync.info().signedIn ? "Sync is on, so your recipes are also kept in your Supabase account." : "Without sync, everything lives only on this phone. Removing Extract from the home screen deletes it, so save a backup first."],
+  ["Ironwood is a separate app", "Extract and Ironwood keep separate data, so nothing syncs between them by itself. Import or send again after changes. Ironwood's mix-and-match recipes come from Extract's copy of its recipe list, which is updated when Extract is."],
   ["Native-app features", "As a home-screen web app, Extract can't use Apple Watch, Siri, the Reminders app, or kitchen scales."]
 ];
-const TOUR_PARTS = [["recipes", "Home and recipes", ["library"]], ["add", "Adding recipes", ["add"]], ["recipe", "A recipe and cooking", ["recipe", "cook"]], ["plan", "Meal Plan", ["plan"]], ["list", "Groceries and pantry", ["list", "pantry"]], ["more", "More and settings", ["more", "feeds", "settings", "help"]]];
+const TOUR_PARTS = [["recipes", "Home and recipes", ["library"]], ["add", "Adding recipes", ["add"]], ["recipe", "A recipe and cooking", ["recipe", "cook"]], ["plan", "Meal Plan", ["plan"]], ["list", "Groceries and pantry", ["list", "pantry"]], ["more", "More and settings", ["more", "feeds", "settings", "help", "ironwood"]]];
 const tourPart = key => { const p = TOUR_PARTS.find(x => x[0] === key); return FULL_TOUR.filter(t => p[2].includes(t.view)); };
 function vHelp() {
   return `<button class="back" data-act="nav" data-v="more">‹ More</button><h1>Help and Tour</h1>
@@ -1701,6 +1821,19 @@ document.addEventListener("click", async e => {
     case "manual-from-link": return openDraft({ title: "", ingredients: [], steps: [], tags: [], source: state.failedUrl || "" });
     case "import-many": return importMany($("#x-many").value, $("#x-many-tag").value.trim());
     // Home: read a link from the clipboard and import it. Without clipboard access, go to the Link tab.
+    case "iw-send": { closeModal(); const r = state.items.get(id); if (!r) return;
+      const t = iw.postText(r);
+      try { await navigator.clipboard.writeText(t); toast("Copied. In Ironwood: Meals → Recipes → From a post, then paste"); }
+      catch { modal(`<h2>Send to Ironwood</h2><p class="hint">Copy this, then in Ironwood go to Meals → Recipes → From a post and paste it.</p><textarea id="sh-text" rows="10" readonly>${esc(t)}</textarea><div class="row"><button class="btn primary" data-act="copy-text">Copy Text</button><button class="btn" data-act="close-modal">Done</button></div>`); }
+      return; }
+    case "iw-read-text": return iwRead($("#iw-text")?.value || "");
+    case "iw-import": return iwImport();
+    case "iw-clear": state.iw = null; return render();
+    case "iw-export": return iwExport();
+    case "iw-shop-add": return iwShopAdd();
+    case "iw-out-week": state.iwOut = new Set(weekRecipeIds()); return render();
+    case "iw-out-fav": state.iwOut = new Set(recipes().filter(r => r.fav).map(r => r.id)); return render();
+    case "iw-out-none": state.iwOut = new Set(); return render();
     case "insert-heading": {
       const ta = $("#" + el.dataset.for); if (!ta) return;
       const word = "New heading:", at = ta.selectionStart ?? ta.value.length, v = ta.value;
@@ -1979,6 +2112,9 @@ document.addEventListener("input", e => { if (e.target.id === "pp-q") return dra
 document.addEventListener("change", e => {
   if (e.target.id === "sort") { state.sort = e.target.value; render(); }
   if (e.target.id === "s-import" && e.target.files[0]) importBackup(e.target.files[0]);
+  if (e.target.id === "iw-file" && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ""; f.text().then(iwRead); }
+  if (e.target.classList?.contains("iw-o")) { const s = state.iwOut || (state.iwOut = new Set()); e.target.checked ? s.add(e.target.value) : s.delete(e.target.value); const c = $("#iw-out .count"); if (c) c.textContent = `${s.size} chosen`; const b = $("[data-act=iw-export]"); if (b) b.disabled = !s.size; }
+  if (e.target.classList?.contains("iw-r") && state.iwSel) e.target.checked ? state.iwSel.add(e.target.value) : state.iwSel.delete(e.target.value);
   if (e.target.id === "f-photo" && e.target.files[0]) addOwnPhoto(e.target.files[0]);
 });
 document.addEventListener("submit", e => {
