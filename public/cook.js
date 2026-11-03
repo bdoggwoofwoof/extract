@@ -54,8 +54,10 @@ const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(timers));
 function unlockAudio() {
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === "suspended") audio.resume(); } catch {}
 }
+// Sound and vibration for timers can be turned off in Settings.
+const pref = k => { try { return localStorage.getItem("rk-" + k) || ""; } catch { return ""; } };
 function ring() {
-  try {
+  if (pref("timerSound") !== "off") try {
     if (!audio) return;
     const t0 = audio.currentTime;
     for (let i = 0; i < 6; i++) {
@@ -65,14 +67,14 @@ function ring() {
       o.connect(g).connect(audio.destination); o.start(t0 + i * 0.32); o.stop(t0 + i * 0.32 + 0.3);
     }
   } catch {}
-  try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 600]); } catch {}
+  if (pref("haptics") !== "off") try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 600]); } catch {}
 }
 function loop() {
   const now = Date.now(); let changed = false;
-  for (const t of timers) if (!t.done && now >= t.end) { t.done = true; changed = true; ring(); }
+  for (const t of timers) if (!t.done && !t.paused && now >= t.end) { t.done = true; changed = true; ring(); }
   if (changed) persist();
   onChange(timers);
-  if (!timers.some(t => !t.done)) { clearInterval(tick); tick = null; }
+  if (!timers.some(t => !t.done && !t.paused)) { clearInterval(tick); tick = null; }
 }
 export function watchTimers(fn) { onChange = fn; if (timers.length) { if (!tick) tick = setInterval(loop, 500); loop(); } }
 export function startTimer(label, secs) {
@@ -80,15 +82,23 @@ export function startTimer(label, secs) {
   timers.push({ id: Date.now().toString(36), label: String(label).slice(0, 60), end: Date.now() + secs * 1000, total: secs, done: false });
   persist(); if (!tick) tick = setInterval(loop, 500); loop();
 }
-export function addTime(id, secs) { const t = timers.find(x => x.id === id); if (t) { t.end = (t.done ? Date.now() : t.end) + secs * 1000; t.done = false; persist(); if (!tick) tick = setInterval(loop, 500); loop(); } }
+export function addTime(id, secs) { const t = timers.find(x => x.id === id); if (t) { if (t.paused) t.left += secs; else t.end = (t.done ? Date.now() : t.end) + secs * 1000; t.done = false; persist(); if (!tick) tick = setInterval(loop, 500); loop(); } }
+// Pause keeps the time left; resume counts down from there.
+export function pauseTimer(id) {
+  const t = timers.find(x => x.id === id); if (!t || t.done) return;
+  if (t.paused) { t.end = Date.now() + t.left * 1000; t.paused = false; delete t.left; if (!tick) tick = setInterval(loop, 500); }
+  else { t.left = Math.max(0, (t.end - Date.now()) / 1000); t.paused = true; }
+  persist(); loop();
+}
 export function stopTimer(id) { timers = timers.filter(t => t.id !== id); persist(); loop(); }
+export const timerLeft = t => t.paused ? t.left : (t.end - Date.now()) / 1000;
 export function timersHtml(esc) {
   if (!timers.length) return "";
-  const now = Date.now();
   return `<div class="timer-tray" role="region" aria-label="Timers">${timers.map(t => `
-    <div class="timer${t.done ? " done" : ""}" role="timer">
-      <div class="tt"><span class="tclock">${t.done ? "Done" : fmtClock((t.end - now) / 1000)}</span><span class="tlabel">${esc(t.label)}</span></div>
-      <button class="btn sm ghost" data-act="timer-add" data-id="${t.id}" aria-label="Add one minute">+1 min</button>
-      <button class="btn sm ghost" data-act="timer-stop" data-id="${t.id}" aria-label="${t.done ? "Dismiss" : "Cancel"} timer">${t.done ? "OK" : "✕"}</button>
+    <div class="timer${t.done ? " done" : ""}${t.paused ? " paused" : ""}" role="timer" aria-label="${esc(t.label)}">
+      <div class="tt"><span class="tclock">${t.done ? "Done" : fmtClock(timerLeft(t))}</span><span class="tlabel">${esc(t.label)}${t.paused ? " (paused)" : ""}</span></div>
+      ${t.done ? "" : `<button class="tbtn" data-act="timer-pause" data-id="${t.id}" aria-label="${t.paused ? "Resume" : "Pause"} timer">${t.paused ? "Resume" : "Pause"}</button>`}
+      <button class="tbtn" data-act="timer-add" data-id="${t.id}" aria-label="Add one minute">+1 min</button>
+      <button class="tbtn strong" data-act="timer-stop" data-id="${t.id}">${t.done ? "Dismiss" : "Cancel"}</button>
     </div>`).join("")}</div>`;
 }

@@ -1,5 +1,9 @@
 # Extract
 
+Extract turns recipe links from websites and social media into clean recipes you can save, organize, plan meals around, shop for and cook from. Free, no ads, works offline.
+
+Design (Nov 2026): a modern personal cookbook. Ceramic ivory and cast iron with olive for supporting marks and paprika for actions; food photos carry the color. Instrument Sans for the interface, Newsreader for recipe titles. Tabs: Recipes (home), Plan, Groceries, Pantry, More. Built for one hand: the recipe's everyday actions sit in a bar at the bottom, cooking mode has big Back / Next Step buttons and adjustable text, rows swipe (with visible ⋯ buttons), meals drag between days, and deletes can be undone. Follows the phone's text size, light/dark mode and reduced-motion setting.
+
 A free, ad-free recipe app for your phone. Paste or share a link to any recipe page and get just the recipe: ingredients and steps, no life story. Save recipes, sort them into categories and recipe books, scale servings while you cook, and share them with anyone.
 
 - Works on iPhone and Android as a home-screen app, and on a computer in any browser.
