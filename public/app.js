@@ -437,7 +437,7 @@ function homeHtml(all) {
       <div class="next" id="up-next">
         <h2 class="h-small">Up next</h2>
         ${next.length ? `<ul>${next.map(({ e, d, i }) => { const r = e.recipeId ? state.items.get(e.recipeId) : null;
-          return `<li><button data-act="${r ? "open-recipe" : "nav"}" ${r ? `data-id="${esc(r.id)}"` : `data-v="plan"`}><span class="when">${esc(dayWord(d, i))}${e.meal ? `, ${esc(e.meal.toLowerCase())}` : ""}</span><span class="what">${esc(r ? r.title : e.note || e.title || "Meal")}</span></button></li>`; }).join("")}</ul>`
+          return `<li><button data-act="${r ? "open-recipe" : "nav"}" ${r ? `data-id="${esc(r.id)}"` : `data-v="plan"`}><span class="when">${esc(dayWord(d, i))}${e.meal ? `, ${esc(e.meal.toLowerCase())}` : ""}</span><span class="what">${esc(r ? r.title : e.recipeId ? (e.title || "Deleted recipe") : e.note || e.title || "Meal")}</span></button></li>`; }).join("")}</ul>`
           : `<p class="hint">Nothing planned yet. <a href="#" data-act="nav" data-v="plan">Plan a few meals</a></p>`}
       </div>
       <div class="quick">
