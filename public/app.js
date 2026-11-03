@@ -1302,10 +1302,10 @@ function vShared() {
 }
 /* ===== Help ===== */
 const HELP = [
-  ["Save a recipe from a website", "Paste the link in the box on the home screen (or tap Add Recipe at the top) and tap Import Link. Check it over, then Save Recipe. Sites that turn readers away, like Allrecipes, are read from the Internet Archive's saved copy."],
+  ["Save a recipe from a website", "Paste the link in the box on the home screen (or tap + at the top) and tap Import Link. Check it over, then Save Recipe. Sites that turn readers away, like Allrecipes, are read from the Internet Archive's saved copy."],
   ["Save from Instagram, TikTok or YouTube", "Copy the post's link (Share → Copy Link) and paste it. Extract reads the caption or description. If the caption only says “recipe in bio”, open the creator's website and paste that link instead."],
-  ["When an import doesn't work", "Extract keeps your link and says why. Try Again, paste the page's text, type it in, or tap Save for Later. Saved links wait on the Add Recipe page."],
-  ["Save from my phone's Share button", "Android: once Extract is installed, tap Share on any recipe page and pick Extract. iPhone: Share → Copy, then open Extract → Add Recipe → Paste Link."],
+  ["When an import doesn't work", "Extract keeps your link and says why. Try Again, paste the page's text, type it in, or tap Save for Later. Saved links wait on the + page."],
+  ["Save from my phone's Share button", "Android: once Extract is installed, tap Share on any recipe page and pick Extract. iPhone: Share → Copy, then open Extract, tap + at the top, then Paste Link."],
   ["Cook with it", "Open a recipe and tap Start Cooking. Each step shows big, with the ingredients it uses. Swipe or tap Next Step. Times like “25 minutes” become Start Timer buttons. A+ and A− change the text size."],
   ["Quick actions", "Press and hold a recipe card for Start Cooking, Add to Plan, Add to Grocery List and more. Swipe a grocery item right to check it off, or left for options. Every gesture also has a visible button."],
   ["Undo", "Deleting a recipe, a grocery item, a planned meal or a pantry item shows an Undo button for a few seconds."],
@@ -1797,7 +1797,7 @@ function showOnline() {
   const b = $("#offline"); if (b) b.hidden = on;
   if (was === on) return;
   if (["add", "library"].includes(state.view.name) && !document.querySelector(".scrim")) render();
-  if (on && pendingLinks().length) toast(`Back online. ${pendingLinks().length} saved link${pendingLinks().length === 1 ? "" : "s"} can be imported now, from Add Recipe.`);
+  if (on && pendingLinks().length) toast(`Back online. ${pendingLinks().length} saved link${pendingLinks().length === 1 ? "" : "s"} can be imported now: tap + at the top.`);
 }
 window.addEventListener("online", showOnline); window.addEventListener("offline", showOnline);
 

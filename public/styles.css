@@ -522,3 +522,9 @@ code{font-size:.875rem;background:var(--shade);border-radius:4px;padding:.05rem 
 .shelf{scroll-padding-inline:1rem}
 .cooking .toast{top:calc(3.6rem + env(safe-area-inset-top,0px))}
 .cm-ings li.sec{display:block;padding-top:.9rem}
+
+/* The add button is just a + (labelled "Add Recipe" for screen readers). */
+.add-btn{width:44px;height:44px;min-height:44px;padding:0;justify-content:center;border-radius:50%;border:0;background:transparent}
+.add-btn svg{width:1.6rem;height:1.6rem;stroke-width:1.8}
+.add-btn:hover{background:rgba(243,237,226,.12)}
+.add-btn[aria-current="page"]{background:rgba(243,237,226,.18);color:var(--bar-ink)}
