@@ -20,6 +20,9 @@ function toast(msg, undo) {
   t.hidden = false; t.classList.remove("pop"); void t.offsetWidth; t.classList.add("pop");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; toastUndo = null; }, toastUndo ? 6000 : 3400);
 }
+// Screen readers: one short message per change (the page itself is not a live region, so a re-render isn't read out whole).
+let announceTimer;
+function announce(msg) { const a = $("#announce"); if (!a) return; a.textContent = ""; clearTimeout(announceTimer); announceTimer = setTimeout(() => { a.textContent = msg; }, 60); }
 // A light tap of feedback for meaningful moments (Android; iPhone browsers don't allow it).
 const haptic = (ms = 10) => { try { if (settings.get("haptics") !== "off" && navigator.vibrate) navigator.vibrate(ms); } catch {} };
 const settings = {
@@ -374,15 +377,16 @@ const EXAMPLE = {
 };
 
 /* ===== Navigation ===== */
-function go(view) { state.view = view; state.confirm = null; state.bookMenu = false; state.moreMenu = false; render(); window.scrollTo(0, 0); }
+function go(view) { state.view = view; state.confirm = null; state.focusQ = false; state.bookMenu = false; state.moreMenu = false; render(); window.scrollTo(0, 0); }
 function openDraft(r, id, archivedAt, note) { state.draft = { ...r, id: id || null }; state.draftArchived = archivedAt || ""; state.draftNote = note || ""; go({ name: "edit" }); }
 
 /* ===== Render ===== */
+let lastView = "";
 function render() {
   const v = state.view.name;
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; badge.setAttribute("aria-label", `${lc} to get`); }
   ["library", "plan", "list", "pantry", "more"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
-  const cur = { plan: "plan", list: "list", pantry: "pantry", cook: "library", library: "library", recipe: "library", edit: "library", add: "library", shared: "library",
+  const cur = { plan: "plan", list: "list", pantry: "pantry", cook: "library", library: "library", recipe: "library", edit: state.draft?.id ? "library" : "", shared: "library",
     more: "more", help: "more", feeds: "more", books: "more", book: "more", settings: "more" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   $("#nav-add").setAttribute("aria-current", v === "add" || v === "edit" ? "page" : "false");
@@ -390,6 +394,7 @@ function render() {
   document.body.dataset.view = v;
   const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, more: vMore, message: vMessage }[v];
   $("#main").innerHTML = fn ? fn() : "";
+  if (v !== lastView) { lastView = v; const h = v === "cook" ? $("#cm-step") : $("#main h1"); if (h) announce(v === "cook" ? `Cooking. ${$(".cm-count")?.textContent || ""}` : h.textContent.trim()); }
   if (v === "add") wireAdd();
   if (v === "feeds" || v === "more") refreshFeeds();
   if (v === "library" && state.focusQ) { const s = $("#q"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }
@@ -421,12 +426,12 @@ function homeHtml(all) {
   const makeable = pi.length ? all.map(r => canMake(r, pi)).filter(m => m.total && m.missing.length === 0).length : 0;
   const recent = [...all].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
   const np = newPostCount(), pend = pendingLinks().length;
+  // Searching is a field; importing is a button. They used to be two look-alike boxes.
   return `<section class="home">
-    <form class="import" data-form="quick-import" id="home-import" aria-label="Import a recipe">
-      <input type="url" id="home-url" placeholder="Paste a recipe link" inputmode="url" autocomplete="off" aria-label="Recipe link">
-      <button class="btn primary" data-busy>Import Link</button>
-    </form>
-    ${!state.online ? `<p class="hint">You're offline. Links you paste can be saved to import later.</p>` : ""}
+    <div class="import-row" id="home-import">
+      <button class="btn primary" data-act="paste-import" data-busy>${ICON.clip}Paste Recipe Link</button>
+      <button class="btn" data-act="nav" data-v="add">Other Ways</button>
+    </div>
     ${pend ? `<button class="nudge" data-act="nav" data-v="add"><span><strong>${pend} link${pend === 1 ? "" : "s"} waiting to import</strong><span>Tap to try again</span></span><span class="chev" aria-hidden="true">›</span></button>` : ""}
     <div class="glance">
       <div class="next" id="up-next">
@@ -442,7 +447,16 @@ function homeHtml(all) {
       </div>
     </div>
     ${recent.length >= 4 ? `<h2 class="h-small">Recently saved</h2><div class="shelf">${recent.map(r => `<button class="spine" data-act="open-recipe" data-id="${esc(r.id)}" data-press="recipe">${r.image ? imgTag(r.image, "sp-img") : `<span class="sp-img plate" aria-hidden="true">${esc(r.title.trim().charAt(0).toUpperCase())}</span>`}<span>${esc(r.title)}</span></button>`).join("")}</div>` : ""}
+    ${collectionsShelf()}
   </section>`;
+}
+// Collections, one tap from Recipes (they also stay under More).
+function collectionsShelf() {
+  const bs = books();
+  const head = `<div class="row shelf-h"><h2 class="h-small">Collections</h2><span class="spacer"></span><button class="btn sm" data-act="nav" data-v="books" id="home-collections">${bs.length ? "See All" : "New Collection"}</button></div>`;
+  if (!bs.length) return `<div class="home-books">${head}<p class="hint">Group recipes for a holiday, a person or a week of dinners.</p></div>`;
+  return `<div class="home-books">${head}<div class="shelf">${bs.map(b => { const rs = (b.recipeIds || []).map(i => state.items.get(i)).filter(Boolean); const pic = rs.find(r => r.image);
+    return `<button class="spine" data-act="open-book" data-id="${esc(b.id)}">${pic ? imgTag(pic.image, "sp-img") : `<span class="sp-img plate" aria-hidden="true">${esc(b.name.trim().charAt(0).toUpperCase())}</span>`}<span>${esc(b.name)}</span><small class="spine-n">${rs.length} recipe${rs.length === 1 ? "" : "s"}</small></button>`; }).join("")}</div></div>`;
 }
 function vLibrary() {
   const all = recipes();
@@ -471,7 +485,7 @@ function vLibrary() {
     ${filtering ? "" : homeHtml(all)}
     <section class="collection" id="all-recipes">
       <div class="row head"><h2>${filtering ? `${list.length} recipe${list.length === 1 ? "" : "s"}` : "All recipes"}</h2><span class="spacer"></span>
-        ${list.length ? `<button class="btn sm ghost" data-act="surprise" id="surprise">Surprise Me</button>` : ""}
+        ${list.length ? `<button class="btn sm" data-act="surprise" id="surprise">Surprise Me</button>` : ""}
         <label class="sort"><span class="sr">Sort</span><select id="sort" aria-label="Sort recipes"><option value="recent"${state.sort === "recent" ? " selected" : ""}>Recent</option><option value="az"${state.sort === "az" ? " selected" : ""}>A to Z</option><option value="cooked"${state.sort === "cooked" ? " selected" : ""}>Most cooked</option><option value="rated"${state.sort === "rated" ? " selected" : ""}>Top rated</option></select></label></div>
       ${tags.length || favs ? `<div class="chips scroll" role="group" aria-label="Filter recipes">
         <button class="chip" data-act="tag" data-tag="" aria-pressed="${!state.tag && !state.fav}">All</button>
@@ -496,10 +510,12 @@ function vMore() {
 }
 
 // Step text with each time ("25 minutes") turned into a timer button.
-function stepHtml(text, label) {
+// plain: cook mode, where the big Start Timer button below the step does this job.
+function stepHtml(text, label, plain) {
   let out = "", at = 0;
   for (const t of findTimes(text)) {
     out += esc(text.slice(at, t.start));
+    if (plain) { out += `<strong class="time-txt">${esc(t.text)}</strong>`; at = t.end; continue; }
     out += `<button class="time" data-act="timer-start" data-secs="${t.secs}" data-label="${esc(label)}" aria-label="Start a ${esc(t.text)} timer">${esc(t.text)}</button>`;
     at = t.end;
   }
@@ -551,10 +567,10 @@ function cookBody(r, actions = "", after = "", head = "") {
     </header>
     <div class="cook">
       <section class="ings-col" aria-labelledby="h-ings"><div class="row sect-h"><h2 id="h-ings">Ingredients</h2><span class="spacer"></span>
-        <button class="btn sm ghost" data-act="units" data-v="${conv ? "" : other}" aria-pressed="${conv}">${conv ? "As written" : other === "metric" ? "Metric" : "US cups"}</button>
+        <button class="btn sm" data-act="units" data-v="${conv ? "" : other}" aria-pressed="${conv}">${conv ? "As written" : other === "metric" ? "Metric" : "US cups"}</button>
         ${c.ings.size ? `<button class="btn sm ghost" data-act="clear-checks">Uncheck</button>` : ""}</div>
         <ul class="ings">${ings || `<li class="hint">No ingredients listed. Edit the recipe to add them.</li>`}</ul></section>
-      <section class="steps-col" aria-labelledby="h-steps"><div class="row sect-h"><h2 id="h-steps">Instructions</h2><span class="spacer"></span>${"wakeLock" in navigator ? `<button class="btn sm ghost" data-act="wake" aria-pressed="${!!state.wake}">${state.wake ? "Screen stays on" : "Keep Screen On"}</button>` : ""}</div>
+      <section class="steps-col" aria-labelledby="h-steps"><div class="row sect-h"><h2 id="h-steps">Instructions</h2><span class="spacer"></span>${"wakeLock" in navigator ? `<button class="btn sm" data-act="wake" aria-pressed="${!!state.wake}">${state.wake ? "Screen stays on" : "Keep Screen On"}</button>` : ""}</div>
         <ol class="steps">${steps || `<li class="hint">No instructions listed. Edit the recipe to add them.</li>`}</ol>
       ${r.notes ? `<h2 class="sect-h2">Notes</h2><div class="notes">${esc(r.notes)}</div>` : ""}
       ${nutritionHtml(r)}${after}</section>
@@ -571,8 +587,10 @@ const usedIn = r => recipes().filter(x => x.id !== r.id && usesOf(x).some(u => u
 function linksHtml(r) {
   const uses = usesOf(r), used = usedIn(r);
   const a = x => `<a href="#" data-act="open-recipe" data-id="${esc(x.id)}">${esc(x.title)}</a>`;
+  // Only shown when there are links; Link Other Recipes lives in More Actions.
+  if (!uses.length && !used.length) return "";
   return `<div class="links-row" id="links">${uses.length ? `<span><strong>Uses</strong> ${uses.map(a).join(", ")}</span>` : ""}${used.length ? `<span><strong>Used in</strong> ${used.map(a).join(", ")}</span>` : ""}
-    <button class="btn sm ghost" data-act="link-pick" data-id="${esc(r.id)}">${uses.length ? "Edit Links" : "Link a Recipe"}</button></div>`;
+    ${uses.length ? `<button class="btn sm" data-act="link-pick" data-id="${esc(r.id)}">Edit Links</button>` : ""}</div>`;
 }
 function openLinkPicker(id, q = "") {
   const r = state.items.get(id); if (!r) return;
@@ -592,7 +610,11 @@ const ICON = {
   more: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/></svg>`,
   share: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v6.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V12"/></svg>`,
   heart: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/></svg>`,
-  pot: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v6.5A3.5 3.5 0 0 1 16.5 20h-9A3.5 3.5 0 0 1 4 16.5z"/><path d="M2.5 10h19M9 6.5V5M12 6.5V4M15 6.5V5"/></svg>`
+  pot: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v6.5A3.5 3.5 0 0 1 16.5 20h-9A3.5 3.5 0 0 1 4 16.5z"/><path d="M2.5 10h19M9 6.5V5M12 6.5V4M15 6.5V5"/></svg>`,
+  clip: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 4.5V3.8A1.3 1.3 0 0 1 10.8 2.5h2.4a1.3 1.3 0 0 1 1.3 1.3v.7"/><path d="M9.5 11h5M9.5 14.5h5"/></svg>`,
+  list: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.8" cy="6.5" r="1.1"/><circle cx="4.8" cy="12" r="1.1"/><circle cx="4.8" cy="17.5" r="1.1"/></svg>`,
+  speak: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>`,
+  mic: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>`
 };
 function vRecipe() {
   const r = state.items.get(state.view.id);
@@ -606,19 +628,22 @@ function vRecipe() {
       <button class="icon-btn" data-act="share" data-id="${esc(r.id)}" aria-label="Share recipe">${ICON.share}</button>
       <div class="stars" role="group" aria-label="Your rating">${[1, 2, 3, 4, 5].map(n => `<button data-act="rate" data-id="${esc(r.id)}" data-v="${n}" aria-pressed="${(r.rating || 0) >= n}" aria-label="Rate ${n} star${n === 1 ? "" : "s"}${r.rating === n ? " (tap again to clear)" : ""}">★</button>`).join("")}</div>
     </div>`;
-  const actions = `${linksHtml(r)}
+  // Recipe actions sit with the recipe, named for what they do; the tabs at the bottom stay for getting around.
+  const actions = `<div class="ractions" role="group" aria-label="Recipe actions">
+      <button class="btn sm" data-act="list-pick" data-id="${esc(r.id)}">${ICON.cart}Add to List</button>
+      <button class="btn sm" data-act="plan-recipe" data-id="${esc(r.id)}">${ICON.plan}Add to Plan</button>
+      <button class="btn sm icon-only" data-act="more" data-id="${esc(r.id)}" id="recipe-more" aria-label="More actions: edit, collection, links, share, print, delete" title="More actions">${ICON.more}</button>
+    </div>
+    ${linksHtml(r)}
       ${inBooks.length || cookedText(r) ? `<p class="hint">${inBooks.length ? `In ${inBooks.map(b => `<a href="#" data-act="open-book" data-id="${esc(b.id)}">${esc(b.name)}</a>`).join(", ")}` : ""}${inBooks.length && cookedText(r) ? ". " : ""}${esc(cookedText(r))}</p>` : ""}`;
   const log = [...(r.log || [])].sort((a, b) => b.at - a.at);
   const logHtml = `<section class="cook-log" id="cook-log"><div class="row sect-h"><h2>Cooking log</h2><span class="spacer"></span><button class="btn sm" data-act="cooked" data-id="${esc(r.id)}">Log a Cook</button></div>
     ${log.length ? `<ul class="log">${log.map(e => `<li><div class="row"><strong>${esc(new Date(e.at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</strong>${stars(e.rating)}<span class="spacer"></span><button class="btn sm ghost" data-act="log-del" data-id="${esc(r.id)}" data-e="${esc(e.id)}" aria-label="Delete this entry">Delete</button></div>${e.note ? `<p>${esc(e.note)}</p>` : ""}</li>`).join("")}</ul>`
       : `<p class="hint">Each time you make it, note what you changed or want to try next time.</p>`}</section>`;
   const surprise = state.view.surprise ? `<div class="notice row"><span>A surprise pick. How about this one?</span><span class="spacer"></span><button class="btn sm" data-act="surprise">Another</button><button class="btn sm" data-act="plan-recipe" data-id="${esc(r.id)}">Add to Plan</button></div>` : "";
-  // The everyday actions sit at the bottom, in thumb reach.
-  const bar = `<div class="rbar" role="toolbar" aria-label="Recipe actions">
+  // Start Cooking stays in thumb reach, docked on the tab bar as one bottom panel.
+  const bar = `<div class="rbar">
       ${canCook ? `<button class="btn primary" data-act="cook-start" data-id="${esc(r.id)}">${ICON.pot}Start Cooking</button>` : `<button class="btn primary" data-act="edit" data-id="${esc(r.id)}">Edit Recipe</button>`}
-      <button class="icon-btn lbl" data-act="list-pick" data-id="${esc(r.id)}" aria-label="Add to Grocery List">${ICON.cart}<span>Groceries</span></button>
-      <button class="icon-btn lbl" data-act="plan-recipe" data-id="${esc(r.id)}" aria-label="Add to Plan">${ICON.plan}<span>Plan</span></button>
-      <button class="icon-btn lbl" data-act="more" data-id="${esc(r.id)}" aria-label="More actions" id="recipe-more">${ICON.more}<span>More</span></button>
     </div>`;
   return `<button class="back" data-act="${fromBook ? "back-book" : "nav"}" data-v="library">‹ ${fromBook ? "Collection" : "Recipes"}</button>
     ${surprise}<article class="page">${cookBody(r, actions, logHtml, head)}</article>${bar}`;
@@ -698,16 +723,16 @@ function vCook() {
     <div class="cm-body">
       <div class="cm-main${state.view.dir > 0 ? " in-next" : state.view.dir < 0 ? " in-prev" : ""}">
         <p class="cm-title">${esc(r.title)}${st.section ? ` <span class="cm-sec">${esc(st.section)}</span>` : ""}</p>
-        <p class="cm-step" id="cm-step">${stepHtml(showStep(st.text), `${r.title}, step ${i + 1}`)}</p>
+        <p class="cm-step" id="cm-step">${stepHtml(showStep(st.text), `${r.title}, step ${i + 1}`, true)}</p>
         ${times.length ? `<div class="cm-timers">${times.map(t => `<button class="btn timer-start" data-act="timer-start" data-secs="${t.secs}" data-label="${esc(r.title)}, step ${i + 1}">Start Timer <span>${esc(fmtClock(t.secs))}</span></button>`).join("")}</div>` : ""}
         ${uses.length ? `<div class="cm-uses"><h2 class="h-small">For this step</h2><ul class="cm-ings">${uses.map(u => ingRow(u.line)).join("")}</ul></div>` : ""}
       </div>
       <aside class="cm-side" aria-label="All ingredients"><div class="row"><h2 class="h-small">All ingredients${k !== 1 ? ` (×${fmtNum(k)})` : ""}</h2><span class="spacer"></span><button class="btn sm ghost cm-close-all" data-act="cook-ings">Close</button></div>${allList}</aside>
     </div>
     <div class="cm-tools">
-      <button class="btn sm ghost cm-all-btn" data-act="cook-ings" aria-expanded="${!!state.view.showAll}">All Ingredients</button>
-      ${"speechSynthesis" in window ? `<button class="btn sm ghost" data-act="read-aloud" aria-pressed="${!!state.readAloud}">${state.readAloud ? "Reading Aloud" : "Read Aloud"}</button>` : ""}
-      ${SpeechRec ? `<button class="btn sm ghost" data-act="voice" aria-pressed="${!!state.voiceOn}">${state.voiceOn ? "Listening: say next, back, repeat" : "Voice Control"}</button>` : ""}
+      <button class="btn cm-all-btn" data-act="cook-ings" aria-expanded="${!!state.view.showAll}">${ICON.list}All Ingredients</button>
+      ${"speechSynthesis" in window ? `<button class="btn" data-act="read-aloud" aria-pressed="${!!state.readAloud}">${ICON.speak}${state.readAloud ? "Reading Aloud" : "Read Aloud"}</button>` : ""}
+      ${SpeechRec ? `<button class="btn" data-act="voice" aria-pressed="${!!state.voiceOn}">${ICON.mic}${state.voiceOn ? "Listening: say next, back, repeat" : "Voice Control"}</button>` : ""}
     </div>
     <div class="cm-nav">
       <button class="btn big" data-act="cook-prev" ${i === 0 ? "disabled" : ""} aria-label="Previous step">Back</button>
@@ -787,9 +812,12 @@ function vEdit() {
         <div class="field"><label for="f-cook">Cook</label><input type="text" id="f-cook" placeholder="30 min" value="${esc(d.cookTime)}"></div>
         <div class="field"><label for="f-total">Total</label><input type="text" id="f-total" placeholder="45 min" value="${esc(d.totalTime)}"></div>
       </div>
+      <p class="hint" id="f-head-hint">Group ingredients or steps under headings like “For the sauce:”. Tap Add Heading, or type a short line that ends with a colon.</p>
       <div class="grid2">
-        <div class="field"><label for="f-ings">Ingredients, one per line. Start a line with ## for a heading.</label><textarea id="f-ings" rows="12">${esc((d.ingredients || []).join("\n"))}</textarea></div>
-        <div class="field"><label for="f-steps">Steps, with a blank line between each</label><textarea id="f-steps" rows="12">${esc((d.steps || []).join("\n\n"))}</textarea></div>
+        <div class="field"><label for="f-ings">Ingredients, one per line</label><textarea id="f-ings" rows="12" aria-describedby="f-head-hint">${esc((d.ingredients || []).map(toFormLine).join("\n"))}</textarea>
+          <div><button type="button" class="btn sm" data-act="insert-heading" data-for="f-ings">+ Add Heading</button></div></div>
+        <div class="field"><label for="f-steps">Steps, with a blank line between each</label><textarea id="f-steps" rows="12" aria-describedby="f-head-hint">${esc((d.steps || []).map(toFormLine).join("\n\n"))}</textarea>
+          <div><button type="button" class="btn sm" data-act="insert-heading" data-for="f-steps">+ Add Heading</button></div></div>
       </div>
       <div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" rows="3">${esc(d.notes)}</textarea></div>
       <div class="grid2">
@@ -798,8 +826,15 @@ function vEdit() {
         <div class="field"><label for="f-src">Source link</label><input type="url" id="f-src" placeholder="https://" value="${esc(d.source)}"></div>
       </div>
       ${bs.length ? `<div class="field"><label>Collections</label><div class="chips">${bs.map(b => `<label class="chip"><input type="checkbox" class="f-book" value="${esc(b.id)}" ${mine.includes(b.id) ? "checked" : ""}> ${esc(b.name)}</label>`).join("")}</div></div>` : ""}
-      <div class="row"><button class="btn primary big" type="submit">Save Recipe</button><button class="btn big" type="button" data-act="cancel-edit">Cancel</button></div>
+      <div class="form-bar"><button class="btn primary" type="submit">Save Recipe</button><button class="btn" type="button" data-act="cancel-edit">Cancel</button></div>
     </form>`;
+}
+// Section headings are stored as "## For the sauce"; the form shows them as "For the sauce:".
+function toFormLine(l) { return String(l).startsWith("## ") ? String(l).slice(3).trim() + ":" : l; }
+function fromFormLine(l) {
+  if (/^##\s*/.test(l)) return "## " + l.replace(/^##\s*/, "");
+  if (l.length <= 48 && /:$/.test(l) && !/^[\d½⅓⅔¼¾⅛]/.test(l) && !/[.!?;]/.test(l)) return "## " + l.slice(0, -1).trim();
+  return l;
 }
 
 /* ===== Links waiting to import ===== */
@@ -813,7 +848,8 @@ function savePending(url, why) {
 function vAdd() {
   const t = state.addTab;
   const pend = pendingLinks();
-  const tab = (id, label) => `<button role="tab" aria-selected="${t === id}" data-act="add-tab" data-t="${id}">${label}</button>`;
+  // Short labels so all five fit on a small phone; the full name is what screen readers hear.
+  const tab = (id, label, full) => `<button role="tab" id="tab-${id}" aria-selected="${t === id}" aria-controls="add-panel" tabindex="${t === id ? 0 : -1}" aria-label="${full}" data-act="add-tab" data-t="${id}">${label}</button>`;
   let body = "";
   if (t === "link") body = `<div class="stack">
       <div class="field"><label for="x-url">Recipe link</label><input type="url" id="x-url" placeholder="https://" inputmode="url" autocomplete="off" value="${esc(state.pendingUrl || state.failedUrl || "")}"></div>
@@ -846,8 +882,8 @@ function vAdd() {
     : `<p class="hint">Reading photos needs Claude reading, which isn't turned on for this app yet. Settings shows how to add it.</p><div style="margin-top:12px"><button class="btn" data-act="nav" data-v="settings">Open Settings</button></div>`;
   if (t === "type") body = `<div class="stack"><p class="hint">For family recipes and cards: start from a blank recipe.</p><div><button class="btn primary big" data-act="manual">Start a Blank Recipe</button></div></div>`;
   return `<h1>Add Recipe</h1>
-    <div class="tabs" role="tablist">${tab("link", "Link")}${tab("paste", "Paste Text")}${tab("photo", "Photo")}${tab("type", "Type It In")}${tab("many", "Many Links")}</div>
-    <div class="add-body">${body}</div>
+    <div class="tabs" role="tablist" aria-label="Ways to add a recipe">${tab("link", "Link", "Link")}${tab("paste", "Text", "Paste text")}${tab("photo", "Photo", "Photo")}${tab("type", "Type", "Type it in")}${tab("many", "Bulk", "Bulk: many links at once")}</div>
+    <div class="add-body" id="add-panel" role="tabpanel" aria-labelledby="tab-${t}">${body}</div>
     ${pend.length ? `<section class="group pending" id="pending"><div class="row"><h2 class="group-h">Waiting to import <span class="n">${pend.length}</span></h2><span class="spacer"></span>${state.online ? `<button class="btn sm" data-act="pend-all" data-busy>Import All</button>` : ""}</div>
       <div class="rows">${pend.map(l => `<div class="prow"><span class="pu"><strong>${esc(domain(l.url) || l.url)}</strong><small>${esc(l.url)}</small></span><button class="btn sm" data-act="pend-go" data-id="${esc(l.id)}" data-busy>Import</button><button class="icon-btn" data-act="pend-del" data-id="${esc(l.id)}" aria-label="Remove this saved link">✕</button></div>`).join("")}</div></section>` : ""}`;
 }
@@ -874,7 +910,7 @@ function vList() {
   const open = items.filter(i => !i.done), got = items.filter(i => i.done);
   const one = i => srow("g", `data-ids="${esc(i.id)}" data-name="${esc(itemOf(i.text).name)}"`, `<label class="check gitem${i.done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(i.id)}" ${i.done ? "checked" : ""}><span>${esc(i.text)}</span></label>`, `Options for ${i.text}`);
   // By aisle: the same ingredient from several recipes becomes one line with the amounts added up.
-  const merged = (m, done) => srow("g", `data-ids="${esc(m.ids.join(","))}" data-name="${esc(m.name)}"`, `<label class="check gitem${done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(m.ids.join(","))}" ${done ? "checked" : ""}><span>${esc(m.text)}${m.recipes.length ? `<small class="from">${esc(m.recipes.join(", "))}</small>` : ""}</span></label>`, `Options for ${m.text}`);
+  const merged = (m, done) => srow("g", `data-ids="${esc(m.ids.join(","))}" data-name="${esc(m.name)}"`, `<label class="check gitem${done ? " got" : ""}"><input type="checkbox" data-act="list-check" data-ids="${esc(m.ids.join(","))}" ${done ? "checked" : ""}><span>${esc(m.text)}</span></label>`, `Options for ${m.text}`);
   let body = "";
   if (mode === "aisle") {
     body = byAisle(mergeItems(open), m => aisleFor(m.name, m.texts[0]), aisleOrder()).map(([a, rows]) => `<section class="group"><h2 class="group-h">${esc(a)} <span class="n">${rows.length}</span></h2><div class="rows">${rows.map(m => merged(m, false)).join("")}</div></section>`).join("");
@@ -889,7 +925,7 @@ function vList() {
     <form class="addline" data-form="list-add">
       <input type="text" id="la-text" placeholder="Add an item, like paper towels" aria-label="Add an item" autocomplete="off" enterkeyhint="done">
       <button class="btn primary">Add</button></form>
-    ${items.length ? `<div class="row list-tools"><div class="seg" role="group" aria-label="Group the list" id="list-mode"><button data-act="list-mode" data-v="aisle" aria-pressed="${mode === "aisle"}">By Aisle</button><button data-act="list-mode" data-v="recipe" aria-pressed="${mode === "recipe"}">By Recipe</button></div><span class="spacer"></span>${mode === "aisle" ? `<button class="btn sm ghost" data-act="aisle-order" id="aisle-order">Arrange Aisles</button>` : ""}</div>` : ""}
+    ${items.length ? `<div class="row list-tools"><div class="seg" role="group" aria-label="Group the list" id="list-mode"><button data-act="list-mode" data-v="aisle" aria-pressed="${mode === "aisle"}">By Aisle</button><button data-act="list-mode" data-v="recipe" aria-pressed="${mode === "recipe"}">By Recipe</button></div><span class="spacer"></span>${mode === "aisle" ? `<button class="btn sm" data-act="aisle-order" id="aisle-order">Arrange Aisles</button>` : ""}</div>` : ""}
     ${!items.length ? `<div class="empty"><strong>Nothing on your list</strong><span>Open a recipe and tap Groceries to add its ingredients, or type an item above. Your meal plan can fill it for the whole week.</span><button class="btn" data-act="nav" data-v="plan">Go to Meal Plan</button></div>` : `
       ${body}
       ${!open.length ? `<p class="done-note">Everything's in the cart.</p>` : ""}
@@ -905,7 +941,8 @@ function openGroceryMenu(ids, name) {
   const items = grocery().items.filter(i => ids.includes(i.id)); if (!items.length) return;
   const label = items.length > 1 ? mergeItems(items)[0].text : items[0].text;
   state.menuCtx = { ids, name };
-  modal(`<h2 class="sheet-t">${esc(label)}</h2><div class="sheet-list">
+  const from = [...new Set(items.map(i => i.recipeTitle).filter(Boolean))];
+  modal(`<h2 class="sheet-t">${esc(label)}</h2>${from.length ? `<p class="hint sheet-from">For ${esc(from.join(", "))}</p>` : ""}<div class="sheet-list">
     <button class="mitem" data-act="g-pantry">In My Pantry <span class="hint">Takes it off the list</span></button>
     <button class="mitem" data-act="aisle-pick" data-name="${esc(name)}">Move to Another Aisle <span class="hint">Now: ${esc(aisleFor(name, items[0].text))}</span></button>
     <button class="mitem danger" data-act="g-delete">Delete</button></div>
@@ -1060,7 +1097,7 @@ function openListPicker(r) {
   const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
   modal(`<h2>Add to Grocery List</h2>
     <p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}${k !== 1 ? ` Amounts are scaled ×${esc(fmtNum(k))}.` : ""}</p>
-    <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select All</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select None</button></div>
+    <div class="row"><button class="btn sm" data-act="pick-all" data-v="1">Select All</button><button class="btn sm" data-act="pick-all" data-v="0">Select None</button></div>
     <div class="list">${lines.map((l, i) => `<label class="check"><input type="checkbox" class="lp" value="${i}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div>
     ${linked.map((g, gi) => `<h3 style="margin-top:6px">Also from ${esc(g.r.title)}</h3><p class="hint">A linked recipe. Tick what you need for it too.</p><div class="list">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="L${gi}:${li}"> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div>`).join("")}
     <div class="row"><button class="btn primary" data-act="list-add-picked" data-id="${esc(r.id)}">Add to Grocery List</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
@@ -1086,11 +1123,10 @@ function vPlan() {
     </div>
     ${state.lastFill && state.lastFill.week === (state.view.week || 0) ? `<div class="notice row"><span>Planned ${state.lastFill.entries.length} meal${state.lastFill.entries.length === 1 ? "" : "s"}. Swap any you don't fancy.</span><span class="spacer"></span><button class="btn sm" data-act="plan-fill-undo">Undo</button></div>` : ""}
     <div class="row plan-tools">
-      ${planned.length ? `<button class="btn primary" data-act="plan-to-list">Add Week to Grocery List</button>` : ""}
-      ${recipes().length ? `<button class="btn" data-act="plan-fill" id="plan-fill">Fill Empty Days</button>` : ""}
-      <button class="btn ghost" data-act="plan-ics" id="plan-ics" ${any ? "" : "disabled"}>Add to Calendar</button>
+      ${recipes().length ? `<button class="btn sm" data-act="plan-fill" id="plan-fill">Fill Empty Days</button>` : ""}
+      <button class="btn sm" data-act="plan-ics" id="plan-ics" ${any ? "" : "disabled"}>Add to Calendar</button>
     </div>
-    ${any ? `<p class="hint swipe-hint">Press and hold a meal to drag it to another day.</p>` : `<p class="hint">Tap + Add on a day to plan a recipe, or jot a note like “Leftovers” or “Eating out”.${recipes().length ? " Fill Empty Days can pick for you." : ""}</p>`}
+    ${any ? "" : `<p class="hint">Tap + Add on a day to plan a recipe, or jot a note like “Leftovers” or “Eating out”.${recipes().length ? " Fill Empty Days can pick for you." : ""}</p>`}
     <div class="days">${days.map(d => {
       const key = dayKey(d), entries = [...planDay(key).entries].sort((a, b) => order(a.meal) - order(b.meal));
       const wd = d.toLocaleDateString(undefined, { weekday: "long" });
@@ -1104,7 +1140,8 @@ function vPlan() {
             <button class="rowmenu" data-act="plan-menu" data-day="${key}" data-id="${esc(e.id)}" aria-label="Options for ${esc(r ? r.title : e.note || "this meal")}">${ICON.more}</button></div>`;
         }).join("")}
       </section>`;
-    }).join("")}</div>`;
+    }).join("")}</div>
+    ${planned.length ? `<div class="plan-foot"><button class="btn primary" data-act="plan-to-list">${ICON.cart}Add Week to Grocery List</button><p class="hint">Press and hold a meal to drag it to another day, or use its ⋯ menu.</p></div>` : ""}`;
 }
 function openPlanMenu(day, id) {
   const e = planDay(day).entries.find(x => x.id === id); if (!e) return;
@@ -1252,7 +1289,7 @@ function planWeekToList() {
   state.weekPick = groups;
   const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
   modal(`<h2>Groceries for the week</h2><p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}</p>
-    <div class="row"><button class="btn sm ghost" data-act="pick-all" data-v="1">Select All</button><button class="btn sm ghost" data-act="pick-all" data-v="0">Select None</button></div>
+    <div class="row"><button class="btn sm" data-act="pick-all" data-v="1">Select All</button><button class="btn sm" data-act="pick-all" data-v="0">Select None</button></div>
     <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div></section>`).join("")}</div>
     <div class="row"><button class="btn primary" data-act="week-add-picked">Add to Grocery List</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
 }
@@ -1281,7 +1318,7 @@ function vBook() {
         <div class="field"><label for="eb-desc">Description</label><textarea id="eb-desc" rows="2">${esc(b.description)}</textarea></div>
         <div class="row"><button class="btn primary">Save</button><button type="button" class="btn" data-act="book-edit-cancel">Cancel</button></div></form>`
       : `<div class="stack"><h1 class="rtitle">${esc(b.name)}</h1>${b.description ? `<p class="lede">${esc(b.description)}</p>` : ""}
-        <div class="row"><button class="btn primary" data-act="book-pick">Add Recipes</button><button class="btn" data-act="share" data-id="${esc(b.id)}">Share</button><button class="btn ghost" data-act="book-edit">Rename</button><button class="btn ghost danger" data-act="delete-book" data-id="${esc(b.id)}">Delete</button></div></div>`}
+        <div class="row"><button class="btn primary" data-act="book-pick">Add Recipes</button><button class="btn" data-act="share" data-id="${esc(b.id)}">Share</button><button class="btn icon-only" data-act="book-options" data-id="${esc(b.id)}" aria-label="Collection options: rename, delete" title="Collection options">${ICON.more}</button></div></div>`}
     ${state.view.picking ? `<div class="pickbox stack"><h2 class="h-small">Pick recipes to add</h2>
         ${others.length ? `<div class="list">${others.map(r => `<label class="check"><input type="checkbox" class="pick" value="${esc(r.id)}"> ${esc(r.title)}</label>`).join("")}</div>
         <div class="row"><button class="btn primary" data-act="book-pick-add" data-id="${esc(b.id)}">Add Selected</button><button class="btn" data-act="book-pick-cancel">Done</button></div>`
@@ -1302,20 +1339,21 @@ function vShared() {
 }
 /* ===== Help ===== */
 const HELP = [
-  ["Save a recipe from a website", "Paste the link in the box on the home screen (or tap + at the top) and tap Import Link. Check it over, then Save Recipe. Sites that turn readers away, like Allrecipes, are read from the Internet Archive's saved copy."],
+  ["Save a recipe from a website", "Copy the recipe page's link, then tap Paste Recipe Link on the home screen (or + at the top, then Paste Link). Check it over, then Save Recipe. Sites that turn readers away, like Allrecipes, are read from the Internet Archive's saved copy."],
   ["Save from Instagram, TikTok or YouTube", "Copy the post's link (Share → Copy Link) and paste it. Extract reads the caption or description. If the caption only says “recipe in bio”, open the creator's website and paste that link instead."],
   ["When an import doesn't work", "Extract keeps your link and says why. Try Again, paste the page's text, type it in, or tap Save for Later. Saved links wait on the + page."],
   ["Save from my phone's Share button", "Android: once Extract is installed, tap Share on any recipe page and pick Extract. iPhone: Share → Copy, then open Extract, tap + at the top, then Paste Link."],
-  ["Cook with it", "Open a recipe and tap Start Cooking. Each step shows big, with the ingredients it uses. Swipe or tap Next Step. Times like “25 minutes” become Start Timer buttons. A+ and A− change the text size."],
+  ["Cook with it", "Open a recipe and tap Start Cooking. Each step shows big, with the ingredients it uses. Swipe or tap Next Step. Times like “25 minutes” get a big Start Timer button. A+ and A− change the text size."],
   ["Quick actions", "Press and hold a recipe card for Start Cooking, Add to Plan, Add to Grocery List and more. Swipe a grocery item right to check it off, or left for options. Every gesture also has a visible button."],
   ["Undo", "Deleting a recipe, a grocery item, a planned meal or a pantry item shows an Undo button for a few seconds."],
   ["Rate a recipe and keep notes", "Tap the stars under a recipe's title. Log a Cook (or finishing cooking) adds a dated note to its Cooking log. Sort your recipes by Top rated."],
+  ["Group ingredients or steps under headings", "When editing a recipe, tap Add Heading, or type a short line that ends with a colon, like “For the sauce:”. It shows as a heading on the recipe."],
   ["Shop by aisle", "Groceries sorts everything by store aisle and adds up repeats, like 1 onion + 2 onions = 3 onions. Arrange Aisles puts them in your store's order; an item's ⋯ menu moves it to another aisle."],
   ["Use the pantry", "Add what you have at home on the Pantry tab. Those items start unticked when you add a recipe to your list, and What can I make? ranks your recipes by what you already have. After shopping, check items off and tap Put in Pantry."],
   ["Plan the week", "Plan → + Add on a day. Press and hold a meal to drag it to another day. Fill Empty Days picks recipes for you, and Add Week to Grocery List shops for all of it at once."],
   ["Put meals on my calendar", "Plan → Add to Calendar makes a calendar file of the week at the meal times you choose. Open it to add the meals to your phone's calendar."],
   ["Can't decide what to make", "On Recipes, tap Surprise Me for a random pick from what's showing. Tap Another for a different one."],
-  ["Link a sauce or dough to a dish", "More → Link Other Recipes on the recipe. A recipe named in the ingredients (“1 cup pizza sauce”) links by itself."],
+  ["Link a sauce or dough to a dish", "On the recipe, tap ⋯ → Link Other Recipes. A recipe named in the ingredients (“1 cup pizza sauce”) links by itself."],
   ["Follow recipe blogs", "More → From Blogs. Follow a blog by its address, or tap a suggestion. Tap Save on a post to import it."],
   ["Share a recipe or a collection", "Tap Share. The link holds a copy of the recipe, so anyone can open and save it without an account."],
   ["Make the text bigger", "Extract follows your phone's text size. Settings → Text size makes it bigger still, and cooking mode has its own A+ and A−."],
@@ -1457,11 +1495,19 @@ async function openShare(item) {
   state.shareCtx = { title, link };
 }
 // Sheets rise from the bottom on phones (one-handed); dialogs sit in the middle on bigger screens.
+// Focus goes into the dialog, stays there while it's open (Tab wraps), and returns to what opened it.
+let modalReturn = null;
 function modal(html, sheet) {
+  if (!$("#modal-root").innerHTML) modalReturn = document.activeElement;
   $("#modal-root").innerHTML = `<div class="scrim" data-act="scrim"><div class="modal${sheet ? " sheet" : ""}" role="dialog" aria-modal="true" tabindex="-1">${html}</div></div>`;
   const m = $("#modal-root .modal"); if (m) m.focus({ preventScroll: true });
 }
-function closeModal() { $("#modal-root").innerHTML = ""; }
+function closeModal() {
+  if (!$("#modal-root").innerHTML) return;
+  $("#modal-root").innerHTML = "";
+  const back = modalReturn; modalReturn = null;
+  if (back && document.contains(back) && back !== document.body) back.focus({ preventScroll: true });
+}
 function copyFrom(el) {
   navigator.clipboard.writeText(el.value).then(() => toast("Copied"), () => { el.focus(); el.select(); toast("Text selected. Use Copy from the menu."); });
 }
@@ -1545,7 +1591,7 @@ async function toggleWake() {
   if (state.wake) { state.wantWake = false; try { await state.wake.release(); } catch {} state.wake = null; render(); return; }
   state.wantWake = true;
   try { await takeWake(); }
-  catch { toast("Your phone won't keep the screen on here."); }
+  catch { if (!state.wakeWarned) { state.wakeWarned = true; toast("Your phone won't keep the screen on here."); } } // say it once, not every time cooking starts
   render();
 }
 document.addEventListener("visibilitychange", async () => {
@@ -1561,8 +1607,8 @@ function saveRecipeForm() {
     ...(d.id ? state.items.get(d.id) : {}), kind: "recipe", id: d.id || newId("r"),
     title: val("#f-title") || "Untitled recipe", servings: parseInt(val("#f-serv"), 10) || null, yield: val("#f-yield"),
     prepTime: val("#f-prep"), cookTime: val("#f-cook"), totalTime: val("#f-total"),
-    ingredients: $("#f-ings").value.split("\n").map(s => s.trim()).filter(Boolean),
-    steps: (/\n\s*\n/.test(steps) ? steps.split(/\n\s*\n/) : steps.split("\n")).map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean),
+    ingredients: $("#f-ings").value.split("\n").map(s => s.trim()).filter(Boolean).map(fromFormLine),
+    steps: (/\n\s*\n/.test(steps) ? steps.split(/\n\s*\n/) : steps.split("\n")).map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean).map(fromFormLine),
     notes: $("#f-notes").value.trim(), source: val("#f-src"),
     tags: [...new Set(val("#f-tags").split(",").map(s => s.trim()).filter(Boolean))],
     image: d.image || "", nutrition: d.nutrition || null
@@ -1621,7 +1667,7 @@ document.addEventListener("click", async e => {
     case "confirm-no": state.confirm = null; return render();
     case "delete-yes": return deleteRecipe(id);
     case "delete-book-yes": removeItem(id); toast("Collection deleted"); return go({ name: "books" });
-    case "delete-book": { const b = state.items.get(id); removeItem(id); go({ name: "books" }); return toast(`Deleted “${b.name}”. Its recipes are still saved.`, () => { save(b); render(); }); }
+    case "delete-book": { const b = state.items.get(id); closeModal(); removeItem(id); go({ name: "books" }); return toast(`Deleted “${b.name}”. Its recipes are still saved.`, () => { save(b); render(); }); }
     case "book-menu": return openCollectionPick(id || state.view.id);
     case "more": return openRecipeSheet(id || state.view.id);
     case "delete-recipe": return deleteRecipeUndoable(id);
@@ -1630,7 +1676,12 @@ document.addEventListener("click", async e => {
     case "book-toggle": { const b = state.items.get(el.dataset.book), rid = el.dataset.recipe, has = (b.recipeIds || []).includes(rid);
       save({ ...b, recipeIds: has ? b.recipeIds.filter(x => x !== rid) : [...(b.recipeIds || []), rid] }); if (!has) haptic(); toast(has ? `Removed from ${b.name}` : `Saved to ${b.name}`); return; }
     case "book-remove": { const b = state.items.get(el.dataset.book); save({ ...b, recipeIds: b.recipeIds.filter(x => x !== el.dataset.recipe) }); closeModal(); render(); return toast(`Removed from ${b.name}`, () => { save(b); render(); }); }
-    case "book-edit": state.view.editing = true; return render();
+    case "book-edit": closeModal(); state.view.editing = true; return render();
+    case "book-options": { const b = state.items.get(id); if (!b) return;
+      return modal(`<h2 class="sheet-t">${esc(b.name)}</h2><div class="sheet-list">
+        <button class="mitem" data-act="book-edit">Rename or Describe</button>
+        <button class="mitem danger" data-act="delete-book" data-id="${esc(id)}">Delete Collection <span class="hint">Its recipes stay saved</span></button></div>
+        <button class="btn" data-act="close-modal">Cancel</button>`, true); }
     case "book-edit-cancel": state.view.editing = false; return render();
     case "book-pick": state.view.picking = true; return render();
     case "book-pick-cancel": state.view.picking = false; return render();
@@ -1649,6 +1700,24 @@ document.addEventListener("click", async e => {
     case "pend-all": { const ls = pendingLinks(); save({ ...pendStore(), links: [] }); state.addTab = "many"; go({ name: "add" }); const m = $("#x-many"); if (m) { m.value = ls.map(l => l.url).join("\n"); importMany(m.value, ""); } return; }
     case "manual-from-link": return openDraft({ title: "", ingredients: [], steps: [], tags: [], source: state.failedUrl || "" });
     case "import-many": return importMany($("#x-many").value, $("#x-many-tag").value.trim());
+    // Home: read a link from the clipboard and import it. Without clipboard access, go to the Link tab.
+    case "insert-heading": {
+      const ta = $("#" + el.dataset.for); if (!ta) return;
+      const word = "New heading:", at = ta.selectionStart ?? ta.value.length, v = ta.value;
+      const before = v.slice(0, at), after = v.slice(at);
+      const sep = el.dataset.for === "f-steps" ? "\n\n" : "\n";
+      const pre = !before || before.endsWith(sep) ? "" : (before.endsWith("\n") && sep === "\n\n" ? "\n" : sep);
+      ta.value = before + pre + word + (after.startsWith("\n") ? "" : sep) + after;
+      const start = before.length + pre.length; ta.focus(); ta.setSelectionRange(start, start + word.length - 1); return;
+    }
+    case "paste-import": {
+      let t = ""; try { t = await navigator.clipboard.readText(); } catch {}
+      const u = findUrl(t);
+      state.addTab = "link";
+      if (u) { state.pendingUrl = u; return go({ name: "add" }); }
+      go({ name: "add" }); setStatus(t ? "That isn't a link. Copy the recipe page's link, then tap Paste Link." : "Paste or type the recipe's link here.", !!t);
+      const x = $("#x-url"); if (x && !t) x.focus(); return;
+    }
     case "paste-link": { try { const t = await navigator.clipboard.readText(); const u = findUrl(t) || t.trim(); $("#x-url").value = u; if (u) fetchFromLink(u); else setStatus("Your clipboard is empty. Copy a recipe link first.", true); } catch { setStatus("Couldn't read the clipboard. Long-press the box above and choose Paste.", true); } return; }
     case "extract-text": { const t = $("#x-text").value; if (t.trim().length < 40) return setStatus("Paste the recipe page's text first.", true); return extractFromText(t, $("#x-src").value.trim()); }
     case "manual": return openDraft({ title: "", ingredients: [], steps: [], tags: [] });
@@ -1762,7 +1831,7 @@ document.addEventListener("click", async e => {
     case "feed-unfollow": { const fs = feedStore(); save({ ...fs, sites: fs.sites.filter(s => s.id !== id) }); return render(); }
     case "feed-save": state.addTab = "link"; state.pendingUrl = el.dataset.url; return go({ name: "add" });
     case "g-menu": return openGroceryMenu(String(el.dataset.ids).split(","), el.dataset.name || "");
-    case "g-delete": { const ids = state.menuCtx.ids; return removeGrocery(ids, ids.length > 1 ? `Deleted ${ids.length} items` : "Deleted"); }
+    case "g-delete": { const ids = state.menuCtx.ids; return removeGrocery(ids, `Removed “${state.menuCtx.name || "item"}”`); }
     case "g-pantry": { const ids = state.menuCtx.ids, its = grocery().items.filter(i => ids.includes(i.id)); const pb = pantry().items; addToPantry(its.map(i => i.text));
       const before = grocery().items; saveGrocery(before.filter(i => !ids.includes(i.id))); closeModal(); haptic(); render();
       return toast("Moved to your pantry", () => { saveGrocery(before); savePantry(pb); render(); }); }
@@ -1782,7 +1851,7 @@ document.addEventListener("click", async e => {
     case "cook-ings": state.view.showAll = !state.view.showAll; return render();
     case "cook-size": { const v = Math.max(0, Math.min(3, +(settings.get("cookSize") || 1) + (+el.dataset.d))); settings.set("cookSize", String(v)); return render(); }
     case "cook-finish": { const rid = state.view.id; exitCook(); return openCookLog(rid, true); }
-    case "timer-start": { e.stopPropagation(); const secs = +el.dataset.secs; startTimer(el.dataset.label || "Timer", secs); haptic(); toast(`Timer started: ${fmtClock(secs)}`); return; }
+    case "timer-start": { e.stopPropagation(); const secs = +el.dataset.secs; startTimer(el.dataset.label || "Timer", secs); haptic(); announce(`Timer started, ${fmtClock(secs)}`); return; } // the timer strip appears; no toast
     case "timer-stop": return stopTimer(el.dataset.id);
     case "timer-add": return addTime(el.dataset.id, 60);
     case "timer-pause": return pauseTimer(el.dataset.id);
@@ -1891,8 +1960,20 @@ document.addEventListener("keydown", e => {
     if (e.key === "ArrowRight") return cookGo(1);
     if (e.key === "ArrowLeft") return cookGo(-1);
   }
+  if (e.target.matches?.("[role=tab]") && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+    const tabs = [...e.target.closest("[role=tablist]").querySelectorAll("[role=tab]")], i = tabs.indexOf(e.target);
+    const n = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    e.preventDefault(); tabs[n].click(); requestAnimationFrame(() => document.querySelector(`#${tabs[n].id}`)?.focus()); return;
+  }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".steps li.step")) { e.preventDefault(); e.target.click(); }
   if (e.key === "Escape" && $("#modal-root").innerHTML) closeModal();
+  if (e.key === "Tab" && $("#modal-root .modal")) {
+    const f = [...$("#modal-root .modal").querySelectorAll("button:not([disabled]),input:not([type=hidden]),select,textarea,a[href],label.btn,[tabindex='0']")].filter(x => x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === $("#modal-root .modal"))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
 });
 document.addEventListener("input", e => { if (e.target.id === "pp-q") return drawPlanPicker(e.target.value); if (e.target.id === "lk-q") return openLinkPicker(state.linkFor, e.target.value); if (e.target.id === "q") { state.q = e.target.value; state.focusQ = true; render(); } });
 document.addEventListener("change", e => {
@@ -1954,7 +2035,12 @@ let traySig = "";
 watchTimers(ts => {
   const box = $("#timers"); if (!box) return;
   const sig = ts.map(t => t.id + t.done + !!t.paused).join();
-  if (sig !== traySig) { traySig = sig; box.innerHTML = timersHtml(esc); return; }
+  if (sig !== traySig) {
+    const newlyDone = ts.filter(t => t.done && !traySig.includes(t.id + "true"));
+    traySig = sig; box.innerHTML = timersHtml(esc);
+    newlyDone.forEach(t => announce(`Timer done: ${t.label}`));
+    return;
+  }
   box.querySelectorAll(".timer").forEach((el, i) => { const t = ts[i]; if (t && !t.done) el.querySelector(".tclock").textContent = fmtClock(timerLeft(t)); });
 });
 
