@@ -555,3 +555,5 @@ code{font-size:.875rem;background:var(--shade);border-radius:4px;padding:.05rem 
 .scaler button{width:44px;height:44px}
 .toast-undo{min-height:44px}
 .cm-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cm-body{grid-template-columns:minmax(0,1fr)}.cm-main{min-width:0}
+@media (min-width:760px){.cm-body{grid-template-columns:minmax(0,3fr) minmax(16rem,2fr)}}
