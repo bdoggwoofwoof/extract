@@ -561,3 +561,26 @@ code{font-size:.875rem;background:var(--shade);border-radius:4px;padding:.05rem 
 .iw-pick .check > span,.panel .check.plain > span{display:flex;flex-direction:column;min-width:0}
 .iw-pick .check small.from,.panel .check.plain small.from{display:block;margin-left:0}
 .iw-pick h3{margin-top:var(--s2)}
+
+/* ===== Plan My Week ===== */
+.pw-row{gap:var(--s3);align-items:flex-end;flex-wrap:wrap}
+.pw-row .field{flex:1 1 7rem;min-width:0}
+.modal .sticky-actions{position:sticky;bottom:calc(-1 * 1.2rem);margin:0 -1.2rem -1.2rem;padding:var(--s3) 1.2rem;background:var(--surface);border-top:1px solid var(--line)}
+.pw-target>summary,.pw-calc>summary,.reels-pick>summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center;color:var(--ink)}
+.pw-target>summary::after,.pw-calc>summary::after,.reels-pick>summary::after{content:" +";color:var(--ink-2);margin-left:.25rem}
+.pw-target[open]>summary::after,.pw-calc[open]>summary::after,.reels-pick[open]>summary::after{content:" −"}
+.pw-target{display:flex;flex-direction:column;gap:var(--s2)}
+.pw-calc{border-left:2px solid var(--line);padding-left:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.stepper{display:inline-flex;align-items:center;gap:var(--s1)}
+.stepper output{min-width:2ch;text-align:center;font-weight:650;font-variant-numeric:tabular-nums}
+.stepper.sm output{min-width:auto;font-size:.875rem;color:var(--ink-2);font-weight:600}
+.day-tot{font-size:.8125rem;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.day-tot.ok{color:var(--olive)}
+.cook-week{margin-top:var(--s4)}
+.cook-week h2{font-size:1.125rem}
+.cook-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.cook-list li{display:flex;flex-direction:column;gap:2px;padding:var(--s2) 0;border-top:1px solid var(--line)}
+.cook-list li:first-child{border-top:0}
+.cook-list .pt{background:none;border:0;padding:0;text-align:left;font-family:var(--serif);font-size:1.0625rem;line-height:1.25;color:var(--ink);cursor:pointer;min-height:32px}
+.pw-done .row{gap:var(--s2)}
+.empty-reels{margin-top:var(--s3)}

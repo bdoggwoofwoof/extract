@@ -6,6 +6,7 @@ import { findTimes, ingredientsForStep, startTimer, stopTimer, pauseTimer, addTi
 import { itemOf, aisleOf, mergeItems, byAisle, inPantry, canMake, AISLES, linkedRecipeFor } from "/grocery.js";
 import { parseRecipeText } from "/textparse.js";
 import * as iw from "/ironwood.js";
+import * as planner from "/planner.js";
 
 /* ===== Helpers ===== */
 const $ = (s, el = document) => el.querySelector(s);
@@ -388,12 +389,12 @@ function render() {
   const lc = listCount(), badge = $("#list-badge"); if (badge) { badge.textContent = lc; badge.hidden = !lc; badge.setAttribute("aria-label", `${lc} to get`); }
   ["library", "plan", "list", "pantry", "more"].forEach(n => { const b = $("#nav-" + n); if (b) b.removeAttribute("aria-current"); });
   const cur = { plan: "plan", list: "list", pantry: "pantry", cook: "library", library: "library", recipe: "library", edit: state.draft?.id ? "library" : "", shared: "library",
-    more: "more", help: "more", feeds: "more", books: "more", book: "more", settings: "more", ironwood: "more" }[v];
+    more: "more", help: "more", feeds: "more", books: "more", book: "more", settings: "more", ironwood: "more", reels: "more" }[v];
   if (cur) $("#nav-" + cur).setAttribute("aria-current", "page");
   $("#nav-add").setAttribute("aria-current", v === "add" || v === "edit" ? "page" : "false");
   document.body.classList.toggle("cooking", v === "cook");
   document.body.dataset.view = v;
-  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, more: vMore, message: vMessage, ironwood: vIronwood }[v];
+  const fn = { plan: vPlan, list: vList, pantry: vPantry, help: vHelp, feeds: vFeeds, cook: vCook, library: vLibrary, recipe: vRecipe, edit: vEdit, add: vAdd, books: vBooks, book: vBook, shared: vShared, settings: vSettings, more: vMore, message: vMessage, ironwood: vIronwood, reels: vReels }[v];
   $("#main").innerHTML = fn ? fn() : "";
   if (v !== lastView) { lastView = v; const h = v === "cook" ? $("#cm-step") : $("#main h1"); if (h) announce(v === "cook" ? `Cooking. ${$(".cm-count")?.textContent || ""}` : h.textContent.trim()); }
   if (v === "add") wireAdd();
@@ -470,6 +471,7 @@ function vLibrary() {
     </form>
     <span class="status" id="home-status"></span>
     <div class="row empty-more"><button class="btn" data-act="nav" data-v="add">Other ways to add</button><button class="btn ghost" data-act="example">Try an example recipe</button></div>
+    <p class="hint empty-reels">Or start with <a href="#" data-act="nav" data-v="reels">327 recipes from Instagram reels</a>, added in one tap.</p>
   </section>`;
   const counts = {}; all.forEach(r => (r.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
   const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
@@ -504,6 +506,7 @@ function vMore() {
     <div class="mlist">
       ${row("books", "Collections", nb ? `${nb} collection${nb === 1 ? "" : "s"}` : "Group recipes for a holiday, a person or a week", "more-collections")}
       ${row("feeds", "From Blogs", fs.sites.length ? (np ? `${np} new post${np === 1 ? "" : "s"}` : `Following ${fs.sites.length}`) : "Follow recipe blogs you like", "more-feeds")}
+      ${row("reels", "Recipes from Reels", recipes().some(r => r.pack === "reels") ? "Added. Find them in the From Reels collection" : "327 recipes from Instagram reels, added in one tap", "more-reels")}
       ${row("ironwood", "Ironwood", "Bring in its meal prep and shopping list, or send it recipes", "more-ironwood")}
       ${row("help", "Help and Tour", "How-tos, what Extract can't do yet, and the tour", "more-help")}
       ${row("settings", "Settings", "Appearance, text size, timers, sync and backups", "more-settings")}
@@ -1124,27 +1127,43 @@ function vPlan() {
       ${state.view.week ? `<button class="btn sm ghost" data-act="week" data-d="0">This Week</button>` : ""}
       <button class="icon-btn" data-act="week" data-d="1" aria-label="Next week">›</button>
     </div>
+    ${state.lastPlan && state.lastPlan.week === (state.view.week || 0) ? `<div class="notice stack pw-done"><span>Planned ${state.lastPlan.added} meal${state.lastPlan.added === 1 ? "" : "s"} from ${state.lastPlan.recipes} recipe${state.lastPlan.recipes === 1 ? "" : "s"}.${state.lastPlan.short.length ? ` No recipes fit ${esc(state.lastPlan.short.join(" or ").toLowerCase())}, so ${state.lastPlan.short.length === 1 ? "it was" : "they were"} left empty.` : ""} Swap any you don't fancy with its ⋯ menu.</span><div class="row"><button class="btn sm primary" data-act="plan-to-list">Add Groceries</button><button class="btn sm" data-act="plan-week-undo">Undo</button></div></div>` : ""}
     ${state.lastFill && state.lastFill.week === (state.view.week || 0) ? `<div class="notice row"><span>Planned ${state.lastFill.entries.length} meal${state.lastFill.entries.length === 1 ? "" : "s"}. Swap any you don't fancy.</span><span class="spacer"></span><button class="btn sm" data-act="plan-fill-undo">Undo</button></div>` : ""}
     <div class="row plan-tools">
+      <button class="btn sm primary" data-act="plan-week" id="plan-week">Plan My Week</button>
       ${recipes().length ? `<button class="btn sm" data-act="plan-fill" id="plan-fill">Fill Empty Days</button>` : ""}
       <button class="btn sm" data-act="plan-ics" id="plan-ics" ${any ? "" : "disabled"}>Add to Calendar</button>
     </div>
-    ${any ? "" : `<p class="hint">Tap + Add on a day to plan a recipe, or jot a note like “Leftovers” or “Eating out”.${recipes().length ? " Fill Empty Days can pick for you." : ""}</p>`}
+    ${any ? "" : `<p class="hint">Plan My Week picks a few recipes and repeats them through the week, the way meal prep works. Or tap + Add on a day to plan a recipe, or jot a note like “Leftovers”.</p>`}
     <div class="days">${days.map(d => {
       const key = dayKey(d), entries = [...planDay(key).entries].sort((a, b) => order(a.meal) - order(b.meal));
       const wd = d.toLocaleDateString(undefined, { weekday: "long" });
+      const tot = planner.dayTotals(entries, id => state.items.get(id)), tg = pwTarget(pwPrefs());
+      const diff = tg && tot.kcal && !tot.unknown ? tot.kcal - tg.kcal : null;
+      const totHtml = tot.kcal ? `<span class="day-tot${diff != null && Math.abs(diff) <= tg.kcal * 0.1 ? " ok" : ""}" title="Per person">${tot.kcal.toLocaleString()} cal${tot.p ? ` · ${tot.p} g protein` : ""}${tot.unknown ? ` · ${tot.unknown} without numbers` : diff != null ? (Math.abs(diff) <= tg.kcal * 0.1 ? " · on target" : ` · ${diff > 0 ? "+" : "−"}${Math.abs(diff).toLocaleString()} cal`) : ""}</span>` : "";
       return `<section class="day${key === todayKey ? " today" : ""}${key < todayKey ? " past" : ""}" data-day="${key}" aria-label="${esc(d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}">
         <div class="day-h"><span class="dn">${esc(wd)}</span><span class="dd">${esc(fmt(d))}</span>${key === todayKey ? `<span class="today-tag">Today</span>` : ""}<span class="spacer"></span>
           <button class="btn sm ghost" data-act="plan-add" data-day="${key}" aria-label="Add to ${esc(wd)}">+ Add</button></div>
+        ${totHtml}
         ${entries.map(e => {
           const r = e.recipeId ? state.items.get(e.recipeId) : null;
           return `<div class="plan-item${fresh === e.id ? " fresh" : ""}" data-entry="${esc(e.id)}" data-day="${key}">${r && r.image ? imgTag(r.image, "pimg") : `<span class="pimg blank" aria-hidden="true">${esc((r ? r.title : e.note || e.title || "·").trim().charAt(0).toUpperCase())}</span>`}
-            <span class="pt-wrap">${e.meal ? `<span class="meal">${esc(e.meal)}</span>` : ""}${e.recipeId ? `<button class="pt" data-act="open-recipe" data-id="${esc(e.recipeId)}">${esc(r ? r.title : e.title || "Deleted recipe")}</button>` : `<span class="pt note">${esc(e.note)}</span>`}</span>
+            <span class="pt-wrap">${e.meal || (e.sv && e.sv !== 1) ? `<span class="meal">${esc([e.meal, e.sv && e.sv !== 1 ? svText(e.sv) + " each" : ""].filter(Boolean).join(" · "))}</span>` : ""}${e.recipeId ? `<button class="pt" data-act="open-recipe" data-id="${esc(e.recipeId)}">${esc(r ? r.title : e.title || "Deleted recipe")}</button>` : `<span class="pt note">${esc(e.note)}</span>`}</span>
             <button class="rowmenu" data-act="plan-menu" data-day="${key}" data-id="${esc(e.id)}" aria-label="Options for ${esc(r ? r.title : e.note || "this meal")}">${ICON.more}</button></div>`;
         }).join("")}
       </section>`;
     }).join("")}</div>
+    ${planned.length ? cookSection(state.view.week || 0) : ""}
     ${planned.length ? `<div class="plan-foot"><button class="btn primary" data-act="plan-to-list">${ICON.cart}Add Week to Grocery List</button><p class="hint">Press and hold a meal to drag it to another day, or use its ⋯ menu.</p></div>` : ""}`;
+}
+// What to cook this week: each recipe's servings for everyone, as batches. Groceries follow these amounts.
+function cookSection(week) {
+  const list = weekCook(week), p = pwPrefs(), tg = pwTarget(p);
+  return `<section class="panel stack cook-week" id="cook-week"><div class="row"><h2>This week's cooking</h2><span class="spacer"></span>
+      <div class="stepper sm" role="group" aria-label="People"><button class="icon-btn" data-act="plan-people" data-d="-1" aria-label="Fewer people">−</button><output aria-live="polite">${p.people} ${p.people === 1 ? "person" : "people"}</output><button class="icon-btn" data-act="plan-people" data-d="1" aria-label="More people">+</button></div></div>
+    <ul class="cook-list">${list.map(x => `<li><button class="pt" data-act="open-recipe" data-id="${esc(x.r.id)}">${esc(x.r.title)}</button><span class="hint">${esc([...x.meals].sort((a, b) => MEALS.indexOf(a) - MEALS.indexOf(b)).join(", "))} · ${esc(planner.batchText(x, fmtNum))}</span></li>`).join("")}</ul>
+    ${tg ? `<p class="hint">Target: ${tg.kcal.toLocaleString()} cal${tg.p ? ` and ${tg.p} g protein` : ""} a day per person. <a href="#" data-act="plan-week">Change</a></p>` : ""}
+  </section>`;
 }
 function openPlanMenu(day, id) {
   const e = planDay(day).entries.find(x => x.id === id); if (!e) return;
@@ -1152,9 +1171,10 @@ function openPlanMenu(day, id) {
   const start = weekStartOf(new Date(day + "T12:00:00"));
   const opts = [...Array(14)].map((_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; }).filter(d => dayKey(d) !== day);
   modal(`<h2 class="sheet-t">${esc(r ? r.title : e.note || "Meal")}</h2>
+    ${r ? `<div class="field"><label>Servings each</label><div class="seg" role="group" aria-label="Servings each">${[0.5, 1, 1.5, 2].map(v => `<button data-act="plan-sv" data-day="${day}" data-id="${esc(id)}" data-v="${v}" aria-pressed="${(e.sv || 1) === v}">${fmtNum(v)}</button>`).join("")}</div></div>` : ""}
     <div class="field"><label for="pm-day">Move to</label><div class="row"><select id="pm-day" style="flex:1;width:auto">${opts.map(d => `<option value="${dayKey(d)}">${esc(d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }))}</option>`).join("")}</select><button class="btn" data-act="plan-move-go" data-day="${day}" data-id="${esc(id)}">Move</button></div></div>
     <div class="sheet-list">
-      ${r ? `<button class="mitem" data-act="open-recipe" data-id="${esc(r.id)}">Open Recipe</button>` : ""}
+      ${r ? `<button class="mitem" data-act="open-recipe" data-id="${esc(r.id)}">Open Recipe</button><button class="mitem" data-act="plan-swap" data-day="${day}" data-id="${esc(id)}">Swap for Another Recipe</button>` : ""}
       <button class="mitem danger" data-act="plan-remove" data-day="${day}" data-id="${esc(id)}">Remove from Plan</button></div>
     <button class="btn" data-act="close-modal">Cancel</button>`, true);
 }
@@ -1228,6 +1248,133 @@ function fillWeek() {
   toast(added.length ? `Planned ${added.length} ${f.meal.toLowerCase()}${added.length === 1 ? "" : "s"}` : pool.length ? `Every day already has ${f.meal.toLowerCase()}` : "No recipes fit those choices. Try picking from All my recipes.");
 }
 
+/* ===== Plan My Week (Ironwood's way of planning, on your recipes) ===== */
+const PW_DEFAULT = { meals: ["Breakfast", "Lunch", "Dinner"], people: 1, cook: "few", from: "all", iw: false, quick: false, fresh: true, kcal: "", p: "", whole: false, me: { sex: "", age: "", ft: "", inch: "", cm: "", lb: "", kg: "", act: 2, goal: "keep" } };
+const pwPrefs = () => { let p = {}; try { p = JSON.parse(settings.get("planPrefs") || "{}"); } catch {} return { ...PW_DEFAULT, ...p, me: { ...PW_DEFAULT.me, ...(p.me || {}) } }; };
+const savePw = p => settings.set("planPrefs", JSON.stringify(p));
+const pwTarget = p => +p.kcal >= 800 && +p.kcal <= 6000 ? { kcal: +p.kcal, p: +p.p > 0 ? +p.p : 0 } : null;
+const svText = sv => sv === 1 ? "1 serving" : `${fmtNum(sv)} servings`;
+function weekKeys(week) { const start = weekStartOf(new Date(), week); return [...Array(7)].map((_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return dayKey(d); }); }
+function openPlanWeek() {
+  const p = pwPrefs(), metric = state.units === "metric", m = p.me, week = state.view.week || 0;
+  const tags = [...new Set(recipes().flatMap(r => r.tags || []))].sort(), bs = books();
+  const seg = (act, opts, cur, label) => `<div class="seg" role="group" aria-label="${label}">${opts.map(([v, t]) => `<button type="button" data-act="${act}" data-v="${esc(v)}" aria-pressed="${Array.isArray(cur) ? cur.includes(v) : String(cur) === String(v)}">${esc(t)}</button>`).join("")}</div>`;
+  modal(`<h2>Plan my week</h2>
+    <p class="hint">Extract picks a few recipes and repeats them through the week, the way meal prep works. Swap or move any meal after.</p>
+    <div class="field"><label>Meals</label>${seg("pw-meal", MEALS.map(x => [x, x]), p.meals, "Meals to plan")}</div>
+    <div class="row pw-row"><div class="field"><label id="pw-people-l">People</label><div class="stepper" role="group" aria-labelledby="pw-people-l"><button type="button" class="icon-btn" data-act="pw-people" data-d="-1" aria-label="Fewer people">−</button><output id="pw-people" aria-live="polite">${p.people}</output><button type="button" class="icon-btn" data-act="pw-people" data-d="1" aria-label="More people">+</button></div></div>
+      ${week === 0 ? `<div class="field"><label>Days</label>${seg("pw-whole", [["0", "Rest of this week"], ["1", "Whole week"]], p.whole ? "1" : "0", "Days to plan")}</div>` : ""}</div>
+    <div class="field"><label>How often do you cook?</label>${seg("pw-cook", Object.entries(planner.COOK_STYLES).map(([k, v]) => [k, v.name]), p.cook, "How often you cook")}
+      <p class="hint" id="pw-cook-sub">${esc(planner.COOK_STYLES[p.cook].sub)}</p></div>
+    <div class="field"><label for="pw-from">Recipes from</label><select id="pw-from">
+      <option value="all"${p.from === "all" ? " selected" : ""}>All my recipes</option>
+      ${recipes().some(r => r.fav) ? `<option value="fav"${p.from === "fav" ? " selected" : ""}>Favorites</option>` : ""}
+      ${recipes().some(r => r.rating >= 4) ? `<option value="top"${p.from === "top" ? " selected" : ""}>Rated 4 stars and up</option>` : ""}
+      ${tags.length ? `<optgroup label="Category">${tags.map(t => `<option value="tag:${esc(t)}"${p.from === "tag:" + t ? " selected" : ""}>${esc(t)}</option>`).join("")}</optgroup>` : ""}
+      ${bs.length ? `<optgroup label="Collection">${bs.map(b => `<option value="book:${esc(b.id)}"${p.from === "book:" + b.id ? " selected" : ""}>${esc(b.name)}</option>`).join("")}</optgroup>` : ""}
+    </select></div>
+    <label class="check plain"><input type="checkbox" id="pw-iw" ${p.iw ? "checked" : ""}> <span>Also use Ironwood's meal-prep recipes<small class="from">About 150, all with calories and protein, so portions can fit a target. Only the ones planned are added to your recipes.</small></span></label>
+    <label class="check plain"><input type="checkbox" id="pw-quick" ${p.quick ? "checked" : ""}> Quick ones first (30 minutes or less)</label>
+    <label class="check plain"><input type="checkbox" id="pw-fresh" ${p.fresh ? "checked" : ""}> Skip recipes I made in the last 2 weeks</label>
+    <details class="pw-target"${pwTarget(p) ? " open" : ""}><summary>Daily target (optional)</summary>
+      <p class="hint">Per person. With a target, portions go up or down in half servings to get close, for recipes that list calories.</p>
+      <div class="row pw-row"><div class="field"><label for="pw-kcal">Calories</label><input type="number" id="pw-kcal" inputmode="numeric" min="800" max="6000" step="10" value="${esc(p.kcal)}" placeholder="2200"></div>
+        <div class="field"><label for="pw-p">Protein (g)</label><input type="number" id="pw-p" inputmode="numeric" min="0" max="400" value="${esc(p.p)}" placeholder="140"></div></div>
+      <details class="pw-calc"><summary>Work it out for me</summary>
+        <div class="field"><label>Sex</label>${seg("pw-sex", [["m", "Male"], ["f", "Female"], ["x", "Rather not say"]], m.sex, "Sex")}</div>
+        <div class="row pw-row"><div class="field"><label for="pw-age">Age</label><input type="number" id="pw-age" inputmode="numeric" value="${esc(m.age)}"></div>
+          ${metric ? `<div class="field"><label for="pw-cm">Height (cm)</label><input type="number" id="pw-cm" inputmode="numeric" value="${esc(m.cm)}"></div><div class="field"><label for="pw-kg">Weight (kg)</label><input type="number" id="pw-kg" inputmode="decimal" value="${esc(m.kg)}"></div>`
+            : `<div class="field"><label for="pw-ft">Height</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" id="pw-ft" inputmode="numeric" value="${esc(m.ft)}" aria-label="Feet" placeholder="ft"><input type="number" id="pw-in" inputmode="numeric" value="${esc(m.inch)}" aria-label="Inches" placeholder="in"></div></div><div class="field"><label for="pw-lb">Weight (lb)</label><input type="number" id="pw-lb" inputmode="decimal" value="${esc(m.lb)}"></div>`}</div>
+        <div class="field"><label for="pw-act">Activity</label><select id="pw-act">${planner.ACT_LEVELS.map(a => `<option value="${a[0]}"${+m.act === a[0] ? " selected" : ""}>${esc(a[1])}: ${esc(a[2])}</option>`).join("")}</select></div>
+        <div class="field"><label>Goal</label>${seg("pw-goal", [["lose", "Lose fat"], ["keep", "Stay the same"], ["gain", "Build muscle"]], m.goal, "Goal")}</div>
+        <div><button type="button" class="btn sm" data-act="pw-calc">Work It Out</button></div>
+        <p class="hint" id="pw-calc-out" role="status"></p>
+      </details>
+    </details>
+    <p class="status" id="pw-status" role="status"></p>
+    <div class="row sticky-actions"><button class="btn primary" data-act="pw-go">Plan My Week</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
+}
+// Read the sheet back into prefs (also on every tap, so a re-open keeps what was chosen).
+function readPw() {
+  const p = pwPrefs(), v = id => $("#" + id)?.value ?? "", on = act => [...document.querySelectorAll(`[data-act=${act}][aria-pressed=true]`)].map(b => b.dataset.v);
+  p.meals = on("pw-meal"); p.people = Math.max(1, Math.min(12, +($("#pw-people")?.textContent) || 1)); p.cook = on("pw-cook")[0] || "few";
+  if ($("[data-act=pw-whole]")) p.whole = on("pw-whole")[0] === "1";
+  p.from = v("pw-from") || "all"; p.iw = !!$("#pw-iw")?.checked; p.quick = !!$("#pw-quick")?.checked; p.fresh = !!$("#pw-fresh")?.checked;
+  p.kcal = v("pw-kcal"); p.p = v("pw-p");
+  p.me = { ...p.me, sex: on("pw-sex")[0] || p.me.sex, goal: on("pw-goal")[0] || p.me.goal, age: v("pw-age"), act: +v("pw-act") || 2 };
+  if ($("#pw-cm")) { p.me.cm = v("pw-cm"); p.me.kg = v("pw-kg"); } else { p.me.ft = v("pw-ft"); p.me.inch = v("pw-in"); p.me.lb = v("pw-lb"); }
+  savePw(p); return p;
+}
+function pwCalc() {
+  const p = readPw(), m = p.me, out = $("#pw-calc-out");
+  const h = $("#pw-cm") ? +m.cm : planner.inToCm((+m.ft || 0) * 12 + (+m.inch || 0)), w = $("#pw-kg") ? +m.kg : planner.lbToKg(+m.lb || 0);
+  const t = planner.targetsFor({ sex: m.sex || "x", age: m.age, h, w, act: m.act, goal: m.goal });
+  if (!t) { if (out) out.textContent = "Fill in age, height and weight to work it out."; return; }
+  $("#pw-kcal").value = t.kcal; $("#pw-p").value = t.p; readPw();
+  if (out) out.textContent = `About ${t.kcal.toLocaleString()} calories and ${t.p} g protein a day.${t.note ? " " + t.note : ""} It's an estimate; adjust it to how you feel.`;
+}
+async function runPlanWeek() {
+  const p = readPw(), week = state.view.week || 0, todayKey = dayKey(new Date()), st = $("#pw-status");
+  if (!p.meals.length) { if (st) { st.className = "status err"; st.textContent = "Pick at least one meal."; } return; }
+  const keys = weekKeys(week).filter(k => !(week === 0 && !p.whole && k < todayKey));
+  const twoWeeks = Date.now() - 14 * 864e5;
+  let pool = recipes();
+  if (p.from === "fav") pool = pool.filter(r => r.fav);
+  else if (p.from === "top") pool = pool.filter(r => r.rating >= 4);
+  else if (p.from.startsWith("tag:")) pool = pool.filter(r => (r.tags || []).includes(p.from.slice(4)));
+  else if (p.from.startsWith("book:")) { const b = state.items.get(p.from.slice(5)); pool = pool.filter(r => (b?.recipeIds || []).includes(r.id)); }
+  if (p.fresh) pool = pool.filter(r => !(r.cooked || []).some(t => t > twoWeeks));
+  if (p.iw) {
+    if (st) { st.className = "status"; st.innerHTML = '<span class="spin"></span> Getting Ironwood’s recipes…'; }
+    try { const lib = await iw.library(); for (const [id, r] of Object.entries(lib.recipes || {})) { if (!r || !r.macros || !r.macros.kcal || !["breakfast", "main", "snack"].includes(r.cat) || !(r.ing || []).length || findIw(id)) continue; pool.push({ ...iw.toExtract(r, id), id: "iwc:" + id, ironwoodCat: r.cat }); } }
+    catch { if (st) { st.className = "status err"; st.textContent = "Couldn't load Ironwood's recipes. Check your connection, or untick that box."; } return; }
+  }
+  const target = pwTarget(p);
+  const out = planner.buildWeek(pool, { meals: p.meals, cook: p.cook, days: keys.length, target, quick: p.quick, seed: Date.now() });
+  if (!out.days.some(d => d.length)) { if (st) { st.className = "status err"; st.textContent = recipes().length ? "No recipes fit those choices. Try All my recipes, or tick Ironwood's meal-prep recipes." : "Save a few recipes first, or tick Ironwood's meal-prep recipes."; } return; }
+  // Ironwood recipes that made the plan become Extract recipes now.
+  const ids = new Map(), imported = [];
+  for (const d of out.days) for (const e of d) if (e.recipeId.startsWith("iwc:") && !ids.has(e.recipeId)) {
+    const c = pool.find(r => r.id === e.recipeId), { ironwoodCat, ...rest } = c, r = { ...rest, id: newId("r") }; save(r); ids.set(e.recipeId, r.id); imported.push(r.id);
+  }
+  const removed = [], added = [];
+  keys.forEach((k, i) => {
+    const before = planDay(k).entries, keep = before.filter(e => !e.auto);
+    const adds = out.days[i].filter(e => !keep.some(x => x.meal === e.meal)).map(e => ({ id: newId("p"), meal: e.meal, recipeId: ids.get(e.recipeId) || e.recipeId, sv: e.sv, auto: true }));
+    adds.forEach(a => { const r = state.items.get(a.recipeId); if (r) a.title = r.title; });
+    if (adds.length || keep.length !== before.length) { if (!removed.some(x => x.day === k)) removed.push({ day: k, entries: before }); savePlanDay(k, [...keep, ...adds]); }
+    adds.forEach(a => added.push({ day: k, id: a.id }));
+  });
+  const n = new Set(out.days.flat().map(e => e.recipeId)).size;
+  state.lastPlan = { week, added: added.length, recipes: n, removed, imported, short: out.short };
+  state.lastFill = null; closeModal(); render(); haptic();
+  announce(`Planned ${added.length} meals from ${n} recipes`);
+}
+function undoPlanWeek() {
+  const x = state.lastPlan; if (!x) return;
+  x.removed.forEach(({ day, entries }) => savePlanDay(day, entries));
+  x.imported.forEach(id => { if (!weekKeys(x.week).some(k => planDay(k).entries.some(e => e.recipeId === id))) removeItem(id); });
+  state.lastPlan = null; render(); toast("Undone");
+}
+// Swap a planned meal for another recipe of the same kind (breakfast, main or snack) that isn't in the week yet.
+function swapPlanEntry(day, id) {
+  const e = planDay(day).entries.find(x => x.id === id), cur = e && state.items.get(e.recipeId); if (!cur) return;
+  const kind = planner.kindOf(cur) || (e.meal === "Breakfast" ? "b" : e.meal === "Snack" ? "s" : "m");
+  const week = weekKeys(0).includes(day) ? 0 : Math.round((weekStartOf(new Date(day + "T12:00:00")) - weekStartOf(new Date())) / (7 * 864e5));
+  const inWeek = new Set(weekKeys(week).flatMap(k => planDay(k).entries.map(x => x.recipeId)));
+  const pool = recipes().filter(r => planner.kindOf(r) === kind && !inWeek.has(r.id));
+  if (!pool.length) { closeModal(); return toast("No other recipes of that kind to swap in. Save a few more."); }
+  const r = pool[Math.floor(Math.random() * pool.length)], before = planDay(day).entries;
+  savePlanDay(day, before.map(x => x.id === id ? { ...x, recipeId: r.id, title: r.title } : x));
+  state.fresh = id; closeModal(); render(); toast(`Swapped in ${r.title}`, () => { savePlanDay(day, before); render(); });
+}
+function setEntrySv(day, id, sv) { savePlanDay(day, planDay(day).entries.map(x => x.id === id ? { ...x, sv } : x)); closeModal(); render(); }
+// The week's cooking, groceries scaled to it.
+function weekCook(week) {
+  const entries = weekKeys(week).flatMap(k => planDay(k).entries.filter(e => e.recipeId && state.items.has(e.recipeId)));
+  return planner.cookList(entries, pwPrefs().people, id => state.items.get(id));
+}
+
 /* ===== Calendar file ===== */
 const DEFAULT_TIMES = { Breakfast: "08:00", Lunch: "12:30", Snack: "15:30", Dinner: "18:00" };
 const mealTimes = () => { try { return { ...DEFAULT_TIMES, ...JSON.parse(settings.get("mealTimes") || "{}") }; } catch { return { ...DEFAULT_TIMES }; } };
@@ -1287,13 +1434,14 @@ function planWeekToList() {
   const start = weekStartOf(new Date(), state.view.week || 0);
   const ids = [];
   for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); planDay(dayKey(d)).entries.forEach(e => e.recipeId && state.items.has(e.recipeId) && ids.push(e.recipeId)); }
+  const ck = new Map(weekCook(state.view.week || 0).map(x => [x.r.id, x]));
   const rs = [...new Set(ids)].map(id => state.items.get(id));
-  const groups = rs.map(r => ({ r, lines: (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, 1); return (q ? q + " " : "") + rest; }) }));
+  const groups = rs.map(r => { const k = ck.get(r.id)?.batches || 1; return { r, k, lines: (r.ingredients || []).filter(l => !l.startsWith("## ")).map(l => { const { q, rest } = showQty(l, k); return (q ? q + " " : "") + rest; }) }; });
   state.weekPick = groups;
   const pi = pantry().items, inP = l => inPantry(itemOf(l).name, pi);
   modal(`<h2>Groceries for the week</h2><p class="hint">Untick anything you already have.${pi.length ? " Things in your pantry start unticked." : ""}</p>
     <div class="row"><button class="btn sm" data-act="pick-all" data-v="1">Select All</button><button class="btn sm" data-act="pick-all" data-v="0">Select None</button></div>
-    <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div></section>`).join("")}</div>
+    <div class="pick-list stack" style="gap:12px">${groups.map((g, gi) => `<section><h3>${esc(g.r.title)}${g.k !== 1 ? ` <small class="from">×${esc(fmtNum(g.k))}</small>` : ""}</h3><div class="list" style="margin-top:6px">${g.lines.map((l, li) => `<label class="check"><input type="checkbox" class="lp" value="${gi}:${li}" ${inP(l) ? "" : "checked"}> ${esc(l)}${inP(l) ? ` <small class="from">in pantry</small>` : ""}</label>`).join("")}</div></section>`).join("")}</div>
     <div class="row"><button class="btn primary" data-act="week-add-picked">Add to Grocery List</button><button class="btn" data-act="close-modal">Cancel</button></div>`);
 }
 
@@ -1340,6 +1488,64 @@ function vShared() {
   return banner + `<h1>${esc(p.book.name)}</h1>${p.book.description ? `<p class="lede">${esc(p.book.description)}</p>` : ""}
     <div class="cards">${p.recipes.map((r, i) => rcard({ ...r, id: String(i) }, "shared-open")).join("")}</div>`;
 }
+/* ===== Recipes from Reels ===== */
+// A ready-made set of recipes saved from Instagram reels (public/packs/reels.json). Added in one tap, into one collection,
+// with ids from each reel so adding again never doubles up. Recipes you haven't touched can be taken out again.
+let reelPack = null;
+const loadReels = () => (reelPack ||= fetch("/packs/reels.json").then(r => { if (!r.ok) throw new Error("pack"); return r.json(); }).catch(e => { reelPack = null; throw e; }));
+const REEL_BOOK = "b-reels";
+const untouchedReel = r => r.pack === "reels" && !r.fav && !r.rating && !(r.cooked || []).length && (r.updatedAt || 0) - (r.packAt || 0) < 5000;
+function vReels() {
+  const head = `<button class="back" data-act="nav" data-v="more">‹ More</button><h1>Recipes from Reels</h1>`;
+  const p = state.reels;
+  if (!p) {
+    if (!state.reelsErr) loadReels().then(x => { state.reels = x; if (state.view.name === "reels") render(); }).catch(() => { state.reelsErr = true; if (state.view.name === "reels") render(); });
+    return head + (state.reelsErr ? `<p class="status err">Couldn't load the recipes. Check your connection and try again.</p><button class="btn" data-act="reels-retry">Try Again</button>` : `<p class="status"><span class="spin"></span> Loading the recipes…</p>`);
+  }
+  const sel = state.reelGroups || (state.reelGroups = new Set(p.groups));
+  const skip = !!state.reelSkip;
+  const inGroup = g => p.recipes.filter(r => r.group === g && !(skip && r.missing));
+  const chosen = p.recipes.filter(r => sel.has(r.group) && !(skip && r.missing));
+  const fresh = chosen.filter(r => !state.items.has(r.id)).length;
+  const have = p.recipes.filter(r => state.items.has(r.id)).length;
+  const missing = p.recipes.filter(r => r.missing).length;
+  return head + `<p class="lede">${p.recipes.length} recipes saved from Instagram reels: dinners, Middle Eastern cooking, desserts, drinks and more. Each one credits its creator and links to its reel. They go into a collection called From Reels.</p>
+    <div class="stack" style="margin-top:18px">
+      <section class="panel stack" id="reels-add">
+        <div class="row"><button class="btn primary" data-act="reels-add" id="reels-add-btn" ${fresh ? "" : "disabled"}>${fresh ? `Add ${fresh} Recipe${fresh === 1 ? "" : "s"}` : have ? "All Added" : "Nothing Chosen"}</button>${have ? `<span class="hint">${have} already in your recipes</span>` : ""}</div>
+        <p class="hint">${missing} of them are missing some amounts because the reel didn't say. Their notes say so, and none were guessed.</p>
+        <details class="reels-pick"><summary>Choose which kinds</summary>
+          <div class="list" style="margin-top:8px">${p.groups.map(g => `<label class="check"><input type="checkbox" class="reel-g" value="${esc(g)}" ${sel.has(g) ? "checked" : ""}> <span>${esc(g)}<small class="from">${inGroup(g).length} recipe${inGroup(g).length === 1 ? "" : "s"}</small></span></label>`).join("")}</div>
+          <label class="check plain" style="margin-top:8px"><input type="checkbox" id="reel-skip" ${skip ? "checked" : ""}> Leave out recipes with missing amounts</label>
+        </details>
+      </section>
+      ${have ? `<section class="panel stack"><h2>Take them out again</h2><p class="hint">Removes the ones you haven't changed, rated, favorited or cooked. Anything you've made your own stays.</p><div><button class="btn" data-act="reels-remove">Remove Recipes from Reels</button></div></section>` : ""}
+    </div>`;
+}
+function addReels() {
+  const p = state.reels; if (!p) return;
+  const sel = state.reelGroups || new Set(p.groups), now = Date.now();
+  const add = p.recipes.filter(r => sel.has(r.group) && !(state.reelSkip && r.missing) && !state.items.has(r.id)).map(r => ({
+    kind: "recipe", id: r.id, title: r.title, ingredients: r.ingredients, steps: r.steps, servings: r.servings || null, yield: r.yield || "",
+    prepTime: r.prepTime || "", cookTime: r.cookTime || "", totalTime: r.totalTime || "", tags: [...new Set([...(r.tags || []), "From reels"])],
+    notes: r.notes || "", source: r.source || "", image: "", nutrition: null, pack: "reels", packAt: now, createdAt: now }));
+  if (!add.length) return;
+  const prevBook = state.items.get(REEL_BOOK) ? JSON.parse(JSON.stringify(state.items.get(REEL_BOOK))) : null;
+  add.forEach(save);
+  const b = prevBook ? { ...prevBook } : { kind: "book", id: REEL_BOOK, name: "From Reels", description: p.description || "", recipeIds: [] };
+  b.recipeIds = [...new Set([...(b.recipeIds || []), ...add.map(r => r.id)])]; save(b);
+  render(); haptic();
+  toast(`Added ${add.length} recipe${add.length === 1 ? "" : "s"} to From Reels`, () => { add.forEach(r => removeItem(r.id)); if (prevBook) save(prevBook); else removeItem(REEL_BOOK); render(); });
+}
+function removeReels() {
+  const gone = recipes().filter(untouchedReel); if (!gone.length) return toast("Every recipe from reels has been changed or used, so they all stay.");
+  const ids = new Set(gone.map(r => r.id)), prevBook = state.items.get(REEL_BOOK) ? JSON.parse(JSON.stringify(state.items.get(REEL_BOOK))) : null;
+  gone.forEach(r => removeItem(r.id));
+  if (prevBook) { const left = (prevBook.recipeIds || []).filter(id => !ids.has(id)); if (left.length) save({ ...prevBook, recipeIds: left }); else removeItem(REEL_BOOK); }
+  render();
+  toast(`Removed ${gone.length} recipe${gone.length === 1 ? "" : "s"}`, () => { gone.forEach(r => save({ ...r, packAt: Date.now() })); if (prevBook) save(prevBook); render(); });
+}
+
 /* ===== Ironwood ===== */
 // Extract and Ironwood keep their data apart on the phone, so they trade a backup file, a restore file, and text.
 function vIronwood() {
@@ -1473,6 +1679,8 @@ const HELP = [
   ["Can't decide what to make", "On Recipes, tap Surprise Me for a random pick from what's showing. Tap Another for a different one."],
   ["Link a sauce or dough to a dish", "On the recipe, tap ⋯ → Link Other Recipes. A recipe named in the ingredients (“1 cup pizza sauce”) links by itself."],
   ["Follow recipe blogs", "More → From Blogs. Follow a blog by its address, or tap a suggestion. Tap Save on a post to import it."],
+  ["Plan a week like meal prep", "Meal Plan → Plan My Week. Pick the meals, how many people, and how often you cook: once a week uses the fewest recipes (batch cooking), most days gives more variety. Add a daily calorie and protein target if you want, or let Extract work one out from your height, weight and activity. Portions then move in half servings toward it, for recipes that list calories. Tick Ironwood's meal-prep recipes for about 150 more, all with calories. This week's cooking shows how many servings and batches to make, and the grocery list follows those amounts. Swap a meal or change its servings from its ⋯ menu."],
+  ["Recipes from Reels", "More → Recipes from Reels adds 327 recipes saved from Instagram reels in one tap, into a collection called From Reels. Choose which kinds first if you like. Adding again never doubles up, and Remove Recipes from Reels takes out the ones you haven't changed, rated, favorited or cooked."],
   ["Use it with Ironwood", "More → Ironwood. To bring in Ironwood's meal prep, save a backup in Ironwood (Profile → Save backup file) and choose it there; you can add its groceries and put it on this week's plan. To send recipes to Ironwood, save the file there and use Ironwood's Profile → Restore (it only adds recipes it doesn't have). For one recipe, ⋯ → Send to Ironwood, then Ironwood's Meals → Recipes → From a post."],
   ["Share a recipe or a collection", "Tap Share. The link holds a copy of the recipe, so anyone can open and save it without an account."],
   ["Make the text bigger", "Extract follows your phone's text size. Settings → Text size makes it bigger still, and cooking mode has its own A+ and A−."],
@@ -1765,6 +1973,9 @@ document.addEventListener("click", async e => {
   if (a === "scrim") { if (e.target === el) closeModal(); return; }
   if (el.tagName === "A") e.preventDefault();
   switch (a) {
+    case "reels-add": return addReels();
+    case "reels-remove": return removeReels();
+    case "reels-retry": state.reelsErr = false; return render();
     case "nav": if (state.view.name === "shared") clearHash(); return go({ name: el.dataset.v });
     case "back-book": { const b = books().find(b => (b.recipeIds || []).includes(state.view.id)); return go(b ? { name: "book", id: b.id } : { name: "library" }); }
     case "open-recipe": if (state.swallowTap && !el.closest(".modal")) return; closeModal(); return go({ name: "recipe", id, from: el.dataset.from });
@@ -1954,6 +2165,19 @@ document.addEventListener("click", async e => {
       state.lastSurprise = r.id; return go({ name: "recipe", id: r.id, surprise: true });
     }
     case "plan-fill": return openPlanFill();
+    case "plan-week": return openPlanWeek();
+    case "pw-go": return runPlanWeek();
+    case "pw-calc": return pwCalc();
+    case "plan-week-undo": return undoPlanWeek();
+    case "plan-swap": return swapPlanEntry(el.dataset.day, id);
+    case "plan-sv": return setEntrySv(el.dataset.day, id, +el.dataset.v);
+    case "plan-people": { const p = pwPrefs(); p.people = Math.max(1, Math.min(12, p.people + +el.dataset.d)); savePw(p); return render(); }
+    case "pw-people": { const o = $("#pw-people"); o.textContent = Math.max(1, Math.min(12, (+o.textContent || 1) + +el.dataset.d)); return readPw(); }
+    case "pw-meal": el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") !== "true"); return readPw();
+    case "pw-cook": case "pw-whole": case "pw-sex": case "pw-goal":
+      el.parentElement.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b === el)); readPw();
+      if (a === "pw-cook") { const sub = $("#pw-cook-sub"); if (sub) sub.textContent = planner.COOK_STYLES[el.dataset.v].sub; }
+      return;
     case "fill-meal": state.fillOpts.meal = el.dataset.v; document.querySelectorAll("[data-act=fill-meal]").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === el.dataset.v)); return;
     case "plan-fill-go": return fillWeek();
     case "plan-fill-undo": { const f = state.lastFill; if (f) f.entries.forEach(({ day, id: eid }) => savePlanDay(day, planDay(day).entries.filter(e => e.id !== eid))); state.lastFill = null; render(); return toast("Undone"); }
@@ -2112,6 +2336,12 @@ document.addEventListener("input", e => { if (e.target.id === "pp-q") return dra
 document.addEventListener("change", e => {
   if (e.target.id === "sort") { state.sort = e.target.value; render(); }
   if (e.target.id === "s-import" && e.target.files[0]) importBackup(e.target.files[0]);
+  if (e.target.classList?.contains("reel-g") || e.target.id === "reel-skip") {
+    const sel = state.reelGroups; if (e.target.id === "reel-skip") state.reelSkip = e.target.checked; else e.target.checked ? sel.add(e.target.value) : sel.delete(e.target.value);
+    const p = state.reels, n = p ? p.recipes.filter(r => sel.has(r.group) && !(state.reelSkip && r.missing) && !state.items.has(r.id)).length : 0, btn = $("#reels-add-btn");
+    if (btn) { btn.disabled = !n; btn.textContent = n ? `Add ${n} Recipe${n === 1 ? "" : "s"}` : "Nothing New Chosen"; }
+    document.querySelectorAll(".reel-g").forEach(c => { const g = c.value, k = p.recipes.filter(r => r.group === g && !(state.reelSkip && r.missing)).length; const sm = c.parentElement.querySelector(".from"); if (sm) sm.textContent = `${k} recipe${k === 1 ? "" : "s"}`; });
+  }
   if (e.target.id === "iw-file" && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ""; f.text().then(iwRead); }
   if (e.target.classList?.contains("iw-o")) { const s = state.iwOut || (state.iwOut = new Set()); e.target.checked ? s.add(e.target.value) : s.delete(e.target.value); const c = $("#iw-out .count"); if (c) c.textContent = `${s.size} chosen`; const b = $("[data-act=iw-export]"); if (b) b.disabled = !s.size; }
   if (e.target.classList?.contains("iw-r") && state.iwSel) e.target.checked ? state.iwSel.add(e.target.value) : state.iwSel.delete(e.target.value);
