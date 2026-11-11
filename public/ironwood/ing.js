@@ -1,4 +1,4 @@
-// Copied from Ironwood (5ff5348) by tools/build-ironwood.mjs. Do not edit by hand.
+// Copied from Ironwood (54a7a78) by tools/build-ironwood.mjs. Do not edit by hand.
 const UFRAC = { '½': 1 / 2, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 1 / 4, '¾': 3 / 4, '⅛': 1 / 8 };
 function numOf(s) {
   s = String(s).trim().replace(',', '.'); let v = 0;
@@ -14,7 +14,7 @@ const UNIT_ALIAS = { tsp: 'tsp', teaspoon: 'tsp', teaspoons: 'tsp', tbsp: 'tbsp'
 function guessAisle(n, u) {
   const t = String(n).toLowerCase().split(',')[0];
   if (/\bfrozen\b/.test(t)) return 'frozen';
-  if (/protein powder/.test(t)) return 'pantry';
+  if (/protein powder|garam masala/.test(t)) return 'pantry';
   if (u === 'can' || u === 'jar' || /\bcanned\b|\bbeans?\b|chickpea|salsa|marinara|tomato (paste|sauce)|crushed tomato|diced tomato|coconut milk|broth|stock\b|pickle|olives/.test(t)) return 'canned';
   if (/peanut butter|almond butter|powder|seasoning|flakes|\bdried\b|cumin|paprika|oregano|cinnamon|nutmeg|\bsalt\b|black pepper|curry|vanilla|honey|maple|syrup|soy sauce|vinegar|\boil\b|mustard|sriracha|hot sauce|tahini|chia|flax|cornstarch|baking|bay lea|za.?atar|allspice|cayenne|gochujang|\bmiso\b|tamari|\bsage\b|sugar|chocolate|almonds?\b|walnut|pecan|cashew|\bnuts?\b|sesame|ketchup|mayo/.test(t)) return 'pantry';
   if (/\beggs?\b|yogurt|\bmilk\b|\bbutter\b|kefir|cream\b|cheese|cheddar|mozzarella/.test(t)) return 'dairy';
