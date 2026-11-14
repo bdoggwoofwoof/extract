@@ -1,5 +1,5 @@
 /* Extract — app logic. Recipes and books are stored on this device (IndexedDB). */
-import { FULL_TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
+import { FULL_TOUR, QUICK_TOUR, openTour, maybeShowTour, whatsNewHtml } from "/tour.js";
 import * as sync from "/sync.js";
 import { convertLine, convertTemps, systemOf } from "/units.js";
 import { findTimes, ingredientsForStep, startTimer, stopTimer, pauseTimer, addTime, watchTimers, timersHtml, timerLeft, fmtClock } from "/cook.js";
@@ -1708,8 +1708,8 @@ const tourPart = key => { const p = TOUR_PARTS.find(x => x[0] === key); return F
 function vHelp() {
   return `<button class="back" data-act="nav" data-v="more">‹ More</button><h1>Help and Tour</h1>
     <div class="stack" style="margin-top:18px">
-      <section class="panel stack"><h2>Tour</h2><p class="hint">A walk around the whole app (${FULL_TOUR.length} stops), pointing at the real buttons. Nothing you do in it is saved. Or take just one part.</p>
-        <div><button class="btn primary" data-act="tour" id="help-tour">Take the whole tour</button></div>
+      <section class="panel stack"><h2>Tour</h2><p class="hint">The quick tour points at the ${QUICK_TOUR.length} things you'll use most. For a closer look, pick one part below. Skip any time; nothing you do in a tour is saved.</p>
+        <div><button class="btn primary" data-act="tour" id="help-tour">Take the Quick Tour</button></div>
         <div class="chips" id="tour-parts">${TOUR_PARTS.map(([k, label]) => `<button class="chip" data-act="tour-part" data-v="${k}">${esc(label)} <span class="n">${tourPart(k).length}</span></button>`).join("")}</div></section>
       <section class="panel stack"><h2>How do I…</h2><div class="faq">${HELP.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("")}</div></section>
       <section class="panel stack" id="limits"><h2>What Extract can't do (yet)</h2><ul class="limits">${LIMITS.map(([t, d]) => `<li><strong>${esc(t)}</strong><span>${esc(d)}</span></li>`).join("")}</ul></section>
@@ -2213,7 +2213,7 @@ document.addEventListener("click", async e => {
     case "timer-add": return addTime(el.dataset.id, 60);
     case "timer-pause": return pauseTimer(el.dataset.id);
     case "photo-remove": keepDraftFields(); state.draft.image = ""; return render();
-    case "tour": return openTour($("#tour-root"), FULL_TOUR, "Tour", tourHooks);
+    case "tour": return openTour($("#tour-root"), QUICK_TOUR, "Quick tour", tourHooks);
     case "tour-part": return openTour($("#tour-root"), tourPart(el.dataset.v), TOUR_PARTS.find(x => x[0] === el.dataset.v)[1], tourHooks);
   }
 });

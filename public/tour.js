@@ -8,7 +8,10 @@
      tip     the callout text, written for pointing ("Paste a link here")
      body    the same news for the What's new list in Settings, which has no pointing
      limit   true marks a "Limitation" step: something Extract can't do, said plainly
-     news    false keeps a step out of What's new (it still runs in the full tour) */
+     news    false keeps a step out of What's new (it still runs in the full tour)
+     core    true puts a step in the quick tour that runs on first open (keep it to about 6)
+   First open runs only the quick tour; every card has Skip. The rest is in Help and Tour, one part at a time.
+   After an update, What's new shows at most 3 new steps. */
 
 export const TOUR = [
   // Home and adding
@@ -16,10 +19,13 @@ export const TOUR = [
     title: "A fresh look",
     tip: "Extract has a new design: a home screen that shows what's next, tabs for Groceries and Pantry, and bigger, calmer cooking controls. This quick tour shows what moved.",
     body: "A new, calmer design: Recipes opens on a home screen with Paste Recipe Link, what's up next, and your grocery list and pantry at a glance. Groceries and Pantry have their own tabs; Collections, blogs, help and settings live under More." },
-  { id: "home-import", added: "2026-11-02", view: "library", target: "#home-import",
+  { id: "home-import", core: true, added: "2026-11-02", view: "library", target: "#home-import",
     title: "Paste a link, get the recipe",
-    tip: "Copy a recipe page's link, then tap Paste Recipe Link. You check it over before anything is saved. Other Ways has text, photos and typing it in.",
+    tip: "Copy a recipe page's link and bring it here. Extract pulls out just the ingredients and steps, and you check them over before anything is saved.",
     body: "Copy a recipe link, then tap Paste Recipe Link on the home screen. You check the recipe over before it's saved." },
+  { id: "quick-add", core: true, news: false, firstRun: false, added: "2026-11-13", view: "library", target: "#nav-add",
+    title: "Other ways to add",
+    tip: "The + at the top adds a recipe from anywhere: a link, copied text, a photo, typing it in, or many links at once." },
   { id: "welcome", added: "2026-10-25", news: false, view: "add", tab: "link", target: "#x-url",
     title: "The + button",
     tip: "The + at the top opens this page from anywhere. Paste a link here, or tap Paste Link.",
@@ -85,7 +91,7 @@ export const TOUR = [
     title: "Your recipe cards",
     tip: "Tap a card to open the recipe. Press and hold it for quick actions: Start Cooking, Add to Plan, Add to Grocery List, and more.",
     body: "Recipes bring their photo along, so your collection looks like a cookbook." },
-  { id: "long-press", added: "2026-11-02", view: "library", target: ".rcard",
+  { id: "long-press", firstRun: false, added: "2026-11-02", view: "library", target: ".rcard",
     title: "Press and hold",
     tip: "Press and hold any recipe card for its actions without opening it.",
     body: "Press and hold a recipe card to Start Cooking, Add to Plan, Add to Grocery List, favorite it, add it to a collection or delete it, right from the list." },
@@ -95,9 +101,9 @@ export const TOUR = [
     body: "Tap Surprise Me for a random pick from what's showing. Tap Another for a different one, or Add to Plan." },
 
   // A recipe
-  { id: "cook-mode", added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
+  { id: "cook-mode", core: true, added: "2026-10-25", view: "recipe", target: "[data-act=cook-start]",
     title: "Start Cooking",
-    tip: "Start Cooking sits at the bottom, in thumb reach, right above the tabs.",
+    tip: "Start Cooking shows one step at a time in big type, with timers. Add to List and Add to Plan sit under the recipe's details.",
     body: "Start Cooking opens one step at a time in big type, with timers and the ingredients for that step." },
   { id: "refine-recipe", firstRun: false, added: "2026-11-03", view: "recipe", target: ".ractions",
     title: "Recipe actions, in one place",
@@ -152,11 +158,15 @@ export const TOUR = [
     body: "Timers can now be paused and resumed. Sound and vibration can be turned off in Settings." },
 
   // Plan
+  { id: "plan-week", core: true, added: "2026-11-11", view: "plan", target: "#plan-week",
+    title: "Plan My Week",
+    tip: "Pick your meals, how many people, and how often you cook. Extract plans the week, shows what to cook, and fills your grocery list.",
+    body: "Meal Plan → Plan My Week plans the whole week the way meal prep works: a few recipes repeated, an optional calorie and protein target, how many batches to cook, and a grocery list scaled to match." },
   { id: "meal-plan", added: "2026-10-25", news: false, view: "plan", target: ".day",
     title: "Meal Plan",
     tip: "Tap + Add on a day to plan a recipe or jot a note like Leftovers. Press and hold a meal to drag it to another day.",
     body: "The Plan tab shows your week. Tap + Add on a day, and press and hold a meal to drag it to another day." },
-  { id: "plan-drag", added: "2026-11-02", view: "plan", target: ".day",
+  { id: "plan-drag", firstRun: false, added: "2026-11-02", view: "plan", target: ".day",
     title: "Drag meals around",
     tip: "Press and hold a planned meal, then drag it to another day. Its ⋯ button can move it too.",
     body: "Press and hold a planned meal and drag it to another day, or use its ⋯ button to move or remove it (with Undo)." },
@@ -179,7 +189,7 @@ export const TOUR = [
   { id: "aisles", added: "2026-10-30", news: false, view: "list", target: "#list-mode",
     title: "By aisle",
     tip: "Repeats are added up: 1 onion and 2 onions become 3 onions. By Recipe shows it per recipe instead." },
-  { id: "swipe-rows", added: "2026-11-02", view: "list", target: ".srow",
+  { id: "swipe-rows", core: true, added: "2026-11-02", view: "list", target: ".srow",
     title: "Swipe to check off",
     tip: "Swipe an item right to check it off, or left for options: In My Pantry, move it to another aisle, or delete it (with Undo). The ⋯ button does the same.",
     body: "Swipe a grocery item right to check it off, or left for options. Pantry items swipe right to go on your grocery list. Every swipe has a ⋯ button too, and deletes can be undone." },
@@ -237,6 +247,10 @@ export const TOUR = [
   { id: "limit-native", limit: true, news: false, added: "2026-10-30", view: "settings",
     title: "Not a native app",
     tip: "As a home-screen web app, Extract can't use Apple Watch, Siri or the Reminders app, and timers only ring while it's open." },
+  { id: "reels", added: "2026-11-11", view: "more", target: "#more-reels",
+    title: "Recipes from Reels",
+    tip: "Want a head start? This adds 327 recipes saved from Instagram reels in one tap, into their own collection.",
+    body: "More → Recipes from Reels adds 327 recipes from Instagram reels in one tap. Choose which kinds, and take them out again any time." },
   { id: "ironwood", added: "2026-11-03", view: "more", target: "#more-ironwood",
     title: "Works with Ironwood",
     tip: "Bring in Ironwood's meal prep from its backup file, with the groceries and a week plan, paste in its shopping list, or send Extract recipes back to Ironwood.",
@@ -244,12 +258,12 @@ export const TOUR = [
   { id: "limit-ironwood", limit: true, news: false, added: "2026-11-03", view: "ironwood", target: "#iw-out",
     title: "Two apps, two copies",
     tip: "Extract and Ironwood can't read each other's data directly, so changes don't flow by themselves. Import or send again after you change a recipe. A fresh Ironwood with no workouts takes a Restore file whole, so use Send to Ironwood there." },
-  { id: "help", added: "2026-10-30", news: false, view: "more", target: "#more-help",
-    title: "Help and Tour",
-    tip: "How-tos, everything Extract can't do yet, what's new, and this tour, whole or one part at a time." },
+  { id: "help", core: true, firstRun: false, added: "2026-10-30", news: false, view: "more", target: "#more-help",
+    title: "That's the basics",
+    tip: "Help and Tour has how-tos, what Extract can't do yet, and a closer look at any part of the app when you want it." },
   { id: "settings-gear", news: false, added: "2026-10-25", view: "more", target: "#nav-more",
-    title: "That's the tour",
-    tip: "Collections, blogs, help and settings are all under More. Take the tour again any time from Help and Tour." }
+    title: "More",
+    tip: "Collections, blogs, Ironwood, help and settings are all under More." }
 ];
 
 const SEEN_KEY = "rk-tour-seen";
@@ -301,8 +315,9 @@ function drawCard() {
     <p>${esc(s.tip || s.body)}</p>
     ${steps.length > 1 ? `<div class="coach-progress" aria-hidden="true"><span style="width:${((at + 1) / steps.length) * 100}%"></span></div>` : ""}
     <div class="row tour-actions">
-      ${at > 0 ? `<button class="btn sm" data-tour="back">Back</button>` : `<button class="btn sm ghost" data-tour="done">Skip tour</button>`}
+      ${last ? "" : `<button class="btn sm ghost" data-tour="done">${steps.length > 1 ? "Skip" : "Close"}</button>`}
       <span class="spacer"></span>
+      ${at > 0 ? `<button class="btn sm" data-tour="back">Back</button>` : ""}
       <button class="btn sm primary" data-tour="${last ? "done" : "next"}">${last ? "Done" : "Next"}</button>
     </div>`;
   card.querySelector(`[data-tour=${last ? "done" : "next"}]`).focus({ preventScroll: true });
@@ -366,12 +381,13 @@ function onKey(e) {
   if (e.key === "ArrowLeft") go(-1);
 }
 
-// First open: the whole tour. After an update: just the new steps.
+// First open: the quick tour. After an update: the newest few steps (the rest are in What's new in Help).
+export const QUICK_TOUR = TOUR.filter(t => t.core);
 export const FULL_TOUR = TOUR.filter(t => t.firstRun !== false);
 export function maybeShowTour(el, h) {
   const s = seen();
-  if (!s.size) return openTour(el, FULL_TOUR, "Welcome to Extract", h);
-  const fresh = TOUR.filter(t => !s.has(t.id) && t.news !== false);
+  if (!s.size) return openTour(el, QUICK_TOUR, "Quick tour", h);
+  const fresh = TOUR.filter(t => !s.has(t.id) && t.news !== false).sort((a, b) => b.added.localeCompare(a.added)).slice(0, 3);
   if (fresh.length) openTour(el, fresh, "What's new", h);
   else markSeen(TOUR.map(t => t.id));
 }
